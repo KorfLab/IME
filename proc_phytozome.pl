@@ -113,17 +113,16 @@ while (my $entry = $fasta->nextEntry) {
 	foreach my $id (keys %gene) {
 		next unless $gene{$id}{chrom} eq $chrom;
 		
-		# extract splice sites
+		# extract intron sequences
 		foreach my $intron (sort {$a->{beg} <=> $b->{beg}} @{$gene{$id}{intron}}) {
-			my $don = substr($entry->{SEQ}, $intron->{beg} -1, 5);
-			my $acc = substr($entry->{SEQ}, $intron->{end} -9, 9);
-			if ($don =~ /^GT/ and $acc =~ /AG$/) {
-				$gene{$id}{splice_canonical}++;
-			} else {
-				$gene{$id}{splice_non_canonical}++;
+			my $iseq = substr($entry->{SEQ}, $intron->{beg} - 1,
+				$intron->{end} - $intron->{beg} + 1);
+			if ($gene{$id}{strand} eq '-') {
+				$iseq =~ tr[ACGTRYMKWSBDHV]
+				           [TGCAYRKMWSVHDB];
+				$iseq = reverse $iseq;
 			}
-			push @{$gene{$id}{donor}}, $don;
-			push @{$gene{$id}{acceptor}}, $acc;
+			$intron->{seq} = $iseq;
 		}
 		
 		# build cds sequence
@@ -147,6 +146,13 @@ while (my $entry = $fasta->nextEntry) {
 close $ffh;
 
 # part 4: identify error conditions
+
+my %canonical = (
+	"GT..AG" => 1,
+	"GC..AG" => 1,
+	"AT..AC" => 1,
+);
+
 foreach my $id (keys %gene) {
 	
 	# intron length
@@ -185,7 +191,15 @@ foreach my $id (keys %gene) {
 	if (substr($protein, -1, 1) ne '*') {$gene{$id}{error}{stop_not_found} = 1}
 		
 	# splice sites
-	
+	foreach my $intron (@{$gene{$id}{intron}}) {
+		my $don = substr($intron->{seq}, 0, 2);
+		my $acc = substr($intron->{seq}, -2);
+		my $type = "$don..$acc";
+		$gene{$id}{splices}{$type}++;
+		if (not defined $canonical{$type}) {
+			$gene{$id}{error}{non_canonical_splice}++;
+		}
+	}
 
 }
 
@@ -210,7 +224,7 @@ close $ffh;
 
 # part Y: some summary stats
 my $genes = scalar keys %gene;
-my ($utr5, $utr3, $complete, $exons, $cds, $errors, $kept);
+my ($utr5, $utr3, $complete, $exons, $cds, $errors, $kept, %splices);
 foreach my $id (keys %gene) {
 	my $u5 = exists $gene{$id}{five_prime_UTR};
 	my $u3 = exists $gene{$id}{three_prime_UTR};
@@ -220,6 +234,9 @@ foreach my $id (keys %gene) {
 	$utr3++ if $u3;
 	$complete++ if $u5 and $u3;
 	$errors++ if exists $gene{$id}{error};
+	foreach my $type (keys %{$gene{$id}{splices}}) {
+		$splices{$type} += $gene{$id}{splices}{$type};
+	}
 }
 $kept = @keep;
 
@@ -234,4 +251,8 @@ COMPLETE: $complete
 ERRORS: $errors
 KEPT: $kept
 ";
+print "Splice sites:\n";
+foreach my $type (sort {$splices{$b} <=> $splices{$a}} keys %splices) {
+	print "\t$type\t$splices{$type}\n";
+}
 
