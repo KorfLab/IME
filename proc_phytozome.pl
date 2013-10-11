@@ -176,6 +176,10 @@ foreach my $id (keys %gene) {
 	$gene{$id}{error}{max_5utr}++ if $n5 > $MAX_5UTR;
 	$gene{$id}{error}{max_3utr}++ if $n3 > $MAX_3UTR;
 	
+	if ($UTRs_REQ) {
+		if ($n5 == 0 or $n3 == 0) {$gene{$id}{error}{UTRs_missing}++}
+	}
+	
 	# exon count
 	if (not defined @{$gene{$id}{exon}}) {$gene{$id}{error}{no_exons}++}
 	
@@ -237,7 +241,7 @@ foreach my $id (sort keys %gene) {
 	}
 }
 
-print "skipped $skipped genes due to errors\n";
+print STDERR "skipped $skipped genes due to errors\n";
 #browse(\%gene);
 
 
