@@ -16,27 +16,9 @@ my $MIN_CDS    = 180;
 my $CDS_MOD3   = 0;
 
 die "
-usage: proc_phytozome.pl [options] <parent directory> <query string>
+usage: proc_phytozome.pl [options] <parent directory>
 
-query string:
-  1st character is type: intron, cds, 5utr, 3utr, transcript
-  2nd character is method: number, distance from TSS
-  3rd+ charcters are ranges
-  examples:
-    in1        'first introns'
-    in1-2      'first and second introns'
-    in2-       '2nd and higher introns'
-    id-400     'introns < 400 from TSS'
-    id200-400  'introns from 200 to 400 from TSS'
-    id400-     'introns greater than 400 from TSS'
-    5n1        'first 5utr'
-    td-300     'first 300 nt of transcript'
-
-output options
-  -f <filename> fasta file output
-  -o <filename> tabular file output
-
-gene filtering options
+gene-level errors (will be omitted from output)
   -u UTRs are required
   -m <int> minimum intron size [$MIN_INTRON]
   -M <int> maximum intron size [$MAX_INTRON]
@@ -44,7 +26,7 @@ gene filtering options
   -3 <int> maximum # 3'UTR exons [$MAX_3UTR]
   -c <int> minimum CDS length [$MIN_CDS]
   -C CDS length must be a multiple of 3
-" if @ARGV != 2 or $opt_h;
+" if @ARGV != 1 or $opt_h;
 
 $MIN_INTRON = $opt_m if $opt_m;
 $MAX_INTRON = $opt_M if $opt_M;
@@ -84,9 +66,22 @@ while (<$gfh>) {
 }
 close $gfh;
 
+foreach my $id (keys %gene) {
+	foreach my $feature ('exon', 'three_prime_UTR', 'five_prime_UTR') {
+		if (not defined $gene{$id}{$feature}) {
+			$gene{$id}{$feature} = [];
+		} else {
+			my @stuff = sort {$a->{beg} <=> $b->{beg}} @{$gene{$id}{$feature}};
+			$gene{$id}{$feature} = \@stuff;
+		}
+	}
+	
+	$gene{$id}{tss} = $gene{$id}{exon}[0]{beg};
+}
+
 # part 2: create introns and cds_length attributes
 foreach my $id (keys %gene) {
-	my @exon = sort {$a->{beg} <=> $b->{beg}} @{$gene{$id}{exon}};
+	my @exon = @{$gene{$id}{exon}};
 	my @intron;
 	for (my $i = 1; $i < @exon; $i++) {
 		push @intron, {
@@ -113,16 +108,12 @@ while (my $entry = $fasta->nextEntry) {
 	foreach my $id (keys %gene) {
 		next unless $gene{$id}{chrom} eq $chrom;
 		
-		# extract intron sequences
-		foreach my $intron (sort {$a->{beg} <=> $b->{beg}} @{$gene{$id}{intron}}) {
-			my $iseq = substr($entry->{SEQ}, $intron->{beg} - 1,
-				$intron->{end} - $intron->{beg} + 1);
-			if ($gene{$id}{strand} eq '-') {
-				$iseq =~ tr[ACGTRYMKWSBDHV]
-				           [TGCAYRKMWSVHDB];
-				$iseq = reverse $iseq;
+		# add sequence attributes
+		my $strand = $gene{$id}{strand};
+		foreach my $type ('intron', 'exon', 'five_prime_UTR', 'three_prime_UTR') {
+			foreach my $f (@{$gene{$id}{$type}}) {
+				$f->{seq} = extract_seq($f, $strand, $entry);
 			}
-			$intron->{seq} = $iseq;
 		}
 		
 		# build cds sequence
@@ -140,10 +131,23 @@ while (my $entry = $fasta->nextEntry) {
 		
 		# translate
 		$gene{$id}{protein} = IK::translate($cds_seq);
-		
 	}
 }
 close $ffh;
+
+sub extract_seq {
+	my ($feature, $strand, $entry) = @_;
+	
+	my $seq = substr($entry->{SEQ}, $feature->{beg} -1,
+		$feature->{end} - $feature->{beg} + 1);
+	if ($strand eq '-') {
+		$seq =~ tr[ACGTRYMKWSBDHV]
+		          [TGCAYRKMWSVHDB];
+		$seq = reverse $seq;
+	}
+	
+	return $seq;
+}
 
 # part 4: identify error conditions
 
@@ -203,25 +207,41 @@ foreach my $id (keys %gene) {
 
 }
 
-# part 5: FASTA output
-my @keep;
-foreach my $id (keys %gene) {
-	 next if defined $gene{$id}{error};
-	 next if not defined $gene{$id}{longest};
-	 push @keep, $id
-}
-open($ffh, "gunzip -c $FASTA |") or die;
-$fasta = new FAlite($ffh);
-while (my $entry = $fasta->nextEntry) {
-	my ($chrom) = $entry->def =~ /^>(\S+)/;
-	foreach my $id (@keep) {
-		next unless $gene{$id}{chrom} eq $chrom;
-		next unless defined $gene{$id}{longest};
-	#	print "doing something with $id\n";
+# part 5: the big table
+my $skipped;
+my $imeID = 0;
+foreach my $id (sort keys %gene) {
+	if ($gene{$id}{error}) {
+		$skipped++;
+		next;
+	}
+	
+	my $tss = $gene{$id}{tss};
+		
+	my @type = qw(exon intron five_prime_UTR three_prime_UTR);
+	foreach my $type (@type) {
+		my $ftotal = @{$gene{$id}{$type}};
+		for (my $i = 0; $i < @{$gene{$id}{$type}}; $i++) {
+			my $f = $gene{$id}{$type}[$i];
+			print join("\t",
+				$id,
+				$type,
+				$f->{beg} +1 - $tss,
+				$f->{end} +1 - $tss,
+				$i + 1,
+				$ftotal,
+				$f->{seq},
+				
+			), "\n";
+		}
 	}
 }
-close $ffh;
 
+print "skipped $skipped genes due to errors\n";
+#browse(\%gene);
+
+
+__END__
 # part Y: some summary stats
 my $genes = scalar keys %gene;
 my ($utr5, $utr3, $complete, $exons, $cds, $errors, $kept, %splices);
