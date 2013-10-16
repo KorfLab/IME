@@ -4,8 +4,8 @@ use warnings 'FATAL' => 'all';
 use FAlite;
 use IK;
 use Getopt::Std;
-use vars qw($opt_h $opt_m $opt_M $opt_5 $opt_3 $opt_c $opt_C $opt_f $opt_o $opt_u);
-getopts('hm:M:5:3:c:Cf:o:u');
+use vars qw($opt_h $opt_m $opt_M $opt_5 $opt_3 $opt_c $opt_C $opt_u);
+getopts('hm:M:5:3:c:Cu');
 use DataBrowser;
 
 my $MIN_INTRON = 35;
@@ -35,8 +35,6 @@ $MAX_3UTR   = $opt_3 if $opt_3;
 $MIN_CDS    = $opt_c if $opt_c;
 $CDS_MOD3   = $opt_C;
 my $UTRs_REQ = $opt_u;
-my $FASTA_OUT = $opt_f;
-my $TABLE_OUT = $opt_o;
 
 my ($DIR) = @ARGV;
 my $FASTA = `ls $DIR/assembly/*fa.gz`;                chomp $FASTA;
@@ -212,13 +210,13 @@ foreach my $id (keys %gene) {
 }
 
 # part 5: the big table
-my $skipped;
+my ($skipped, $kept);
 my $imeID = 0;
 foreach my $id (sort keys %gene) {
 	if ($gene{$id}{error}) {
 		$skipped++;
 		next;
-	}
+	} else {$kept++}
 	
 	my $tss = $gene{$id}{tss};
 		
@@ -241,14 +239,10 @@ foreach my $id (sort keys %gene) {
 	}
 }
 
-print STDERR "skipped $skipped genes due to errors\n";
-#browse(\%gene);
-
-
-__END__
 # part Y: some summary stats
 my $genes = scalar keys %gene;
-my ($utr5, $utr3, $complete, $exons, $cds, $errors, $kept, %splices);
+my %error;
+my ($utr5, $utr3, $complete, $exons, $cds, $errors, %splices);
 foreach my $id (keys %gene) {
 	my $u5 = exists $gene{$id}{five_prime_UTR};
 	my $u3 = exists $gene{$id}{three_prime_UTR};
@@ -257,14 +251,21 @@ foreach my $id (keys %gene) {
 	$utr5++ if $u5;
 	$utr3++ if $u3;
 	$complete++ if $u5 and $u3;
-	$errors++ if exists $gene{$id}{error};
+	
+	if (exists $gene{$id}{error}) {
+		$errors++; 
+
+		foreach my $etype (keys %{$gene{$id}{error}}) {
+			$error{$etype}++;
+		}
+	}
 	foreach my $type (keys %{$gene{$id}{splices}}) {
 		$splices{$type} += $gene{$id}{splices}{$type};
 	}
 }
-$kept = @keep;
 
-print "
+
+print STDERR "
 GENOME: $DIR
 GENES: $genes
 EXONS: $exons
@@ -275,8 +276,15 @@ COMPLETE: $complete
 ERRORS: $errors
 KEPT: $kept
 ";
-print "Splice sites:\n";
-foreach my $type (sort {$splices{$b} <=> $splices{$a}} keys %splices) {
-	print "\t$type\t$splices{$type}\n";
+print STDERR "Error types:\n";
+foreach my $etype (sort keys %error) {
+	print STDERR "\t$etype: $error{$etype}\n";
 }
+print STDERR "Splice sites:\n";
+foreach my $type (sort {$splices{$b} <=> $splices{$a}} keys %splices) {
+	print STDERR "\t$type\t$splices{$type}\n";
+}
+
+
+
 
