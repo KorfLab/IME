@@ -4,7 +4,7 @@ use warnings 'FATAL' => 'all';
 use FAlite;
 use IK;
 use Getopt::Std;
-use vars qw($opt_h $opt_m $opt_M $opt_5 $opt_3 $opt_c $opt_C $opt_u);
+use vars qw($opt_h $opt_m $opt_M $opt_5 $opt_3 $opt_c $opt_C);
 getopts('hm:M:5:3:c:Cu');
 use DataBrowser;
 
@@ -19,7 +19,6 @@ die "
 usage: proc_phytozome.pl [options] <parent directory>
 
 gene-level errors (will be omitted from output)
-  -u UTRs are required
   -m <int> minimum intron size [$MIN_INTRON]
   -M <int> maximum intron size [$MAX_INTRON]
   -5 <int> maximum # 5'UTR exons [$MAX_5UTR]
@@ -34,7 +33,6 @@ $MAX_5UTR   = $opt_5 if $opt_5;
 $MAX_3UTR   = $opt_3 if $opt_3;
 $MIN_CDS    = $opt_c if $opt_c;
 $CDS_MOD3   = $opt_C;
-my $UTRs_REQ = $opt_u;
 
 my ($DIR) = @ARGV;
 
@@ -88,6 +86,7 @@ foreach my $id (keys %gene) {
 	$gene{$id}{tss} = $gene{$id}{exon}[0]{beg};
 }
 
+
 # part 2: create introns and cds_length attributes
 foreach my $id (keys %gene) {
 	my @exon = @{$gene{$id}{exon}};
@@ -109,12 +108,21 @@ foreach my $id (keys %gene) {
 	$gene{$id}{cds_length} = $cds_length;	
 }
 
+
 # part 3: read fasta file to add sequence-based attributes
+
+# use a secondary hash to track genes that have had their sequences extracted
+# this will get smaller as each gene is processed and this will speed things up a lot
+my %tmp_gene = %gene;
+
 open(my $ffh, "gunzip -c $FASTA |") or die;
 my $fasta = new FAlite($ffh);
 while (my $entry = $fasta->nextEntry) {
 	my ($chrom) = $entry->def =~ /^>(\S+)/;
-	foreach my $id (keys %gene) {
+		
+#	foreach my $id (keys %gene) {
+	foreach my $id (keys %tmp_gene) {
+
 		next unless $gene{$id}{chrom} eq $chrom;
 		
 		# add sequence attributes
@@ -140,6 +148,9 @@ while (my $entry = $fasta->nextEntry) {
 		
 		# translate
 		$gene{$id}{protein} = IK::translate($cds_seq);
+		
+		# can remove the gene ID from tmp_gene as we won't need to look at it again
+		delete $tmp_gene{$id};	
 	}
 }
 close $ffh;
@@ -157,6 +168,7 @@ sub extract_seq {
 	
 	return $seq;
 }
+
 
 # part 4: identify error conditions
 
@@ -184,11 +196,7 @@ foreach my $id (keys %gene) {
 		: 0;
 	$gene{$id}{error}{max_5utr}++ if $n5 > $MAX_5UTR;
 	$gene{$id}{error}{max_3utr}++ if $n3 > $MAX_3UTR;
-	
-	if ($UTRs_REQ) {
-		if ($n5 == 0 or $n3 == 0) {$gene{$id}{error}{UTRs_missing}++}
-	}
-	
+		
 	# exon count
 	if (not defined @{$gene{$id}{exon}}) {$gene{$id}{error}{no_exons}++}
 	
@@ -219,6 +227,7 @@ foreach my $id (keys %gene) {
 	}
 
 }
+
 
 # part 5: extract relevant info from annotation file
 open(my $afh, "gunzip -c $ANNOTATION |") or die;
@@ -271,11 +280,14 @@ foreach my $id (sort keys %gene) {
 			# also ned to flag whether this feature belongs to a complete transcript (with 5' & 3' UTR)
 			# or is missing one or the other
 			my $transcript_status;
-			if ($gene{$id}{five_prime_UTR} and $gene{$id}{three_prime_UTR}){
+			my $n5 = @{$gene{$id}{five_prime_UTR}};
+			my $n3 = @{$gene{$id}{three_prime_UTR}};
+			warn "n5 = $n5\n";
+			if ($n5 and $n3){
 				$transcript_status = "5-3";								
-			} elsif($gene{$id}{five_prime_UTR}){
+			} elsif($n5){
 				$transcript_status = "5-";					
-			} elsif($gene{$id}{three_prime_UTR}){
+			} elsif($n3){
 				$transcript_status = "-3";		
 			} else{
 				$transcript_status = "-";			
