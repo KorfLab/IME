@@ -37,12 +37,23 @@ $CDS_MOD3   = $opt_C;
 my $UTRs_REQ = $opt_u;
 
 my ($DIR) = @ARGV;
-my $FASTA = `ls $DIR/assembly/*fa.gz`;                chomp $FASTA;
-my $GFF   = `ls $DIR/annotation/*gene_exons.gff3.gz`; chomp $GFF;
-die "can't find FASTA" unless -e $FASTA;
-die "can't find GFF"   unless -e $GFF;
 
-# part 1: get all the genes (actually only the longest)
+# will process 3 files: 
+# 1) a FASTA file with the genome assembly/sequence
+# 2) gene_exons GFF3 file with coordinates of mRNAs, exons, and UTRs
+# 3) Phytozome's annotation file which has transcript names and A. thaliana ortholog assignments
+
+my $FASTA      = `ls $DIR/assembly/*fa.gz`;                    chomp $FASTA;
+my $GFF        = `ls $DIR/annotation/*gene_exons.gff3.gz`;     chomp $GFF;
+my $ANNOTATION = `ls $DIR/annotation/*annotation_info.txt.gz`; chomp $ANNOTATION;
+
+
+die "can't find FASTA"       unless -e $FASTA;
+die "can't find GFF"         unless -e $GFF;
+die "can't find ANNOTATION"  unless -e $ANNOTATION;
+
+
+# part 1: get all the genes (actually only the longest variant at each locus)
 open(my $gfh, "gunzip -c $GFF |") or die;
 my %gene;
 while (<$gfh>) {
@@ -209,7 +220,33 @@ foreach my $id (keys %gene) {
 
 }
 
-# part 5: the big table
+# part 5: extract relevant info from annotation file
+open(my $afh, "gunzip -c $ANNOTATION |") or die;
+while (<$afh>) {
+	next if /^#/;
+	
+  	# extract the 3 fields we need
+  	# 1. Phytozome ID
+  	# 2. transcript ID/name from source database (e.g. LOC_Os07g46980.1 for rice)
+  	# 3. Best hit for A. thaliana ortholog (may not be present)
+  	
+	my @f = split(/\t/);
+	my ($id ,$transcript_ID, $at_ortholog) = ($f[0], $f[2], $f[10]);
+
+	# at_ortholog may not be present, so set to NA
+	$at_ortholog = "NA" if not defined $at_ortholog;
+	$at_ortholog = "NA" if $at_ortholog eq "";
+
+	# add to master hash
+	$gene{$id}{local_id}    = $transcript_ID;
+	$gene{$id}{at_ortholog} = $at_ortholog;
+}
+close $afh;
+
+
+
+
+# part 6: the big table
 my ($skipped, $kept);
 my $imeID = 0;
 foreach my $id (sort keys %gene) {
@@ -227,11 +264,13 @@ foreach my $id (sort keys %gene) {
 			my $f = $gene{$id}{$type}[$i];
 			print join("\t",
 				$id,
+				$gene{$id}{local_id},
 				$type,
 				$f->{beg} +1 - $tss,
 				$f->{end} +1 - $tss,
 				$i + 1,
 				$ftotal,
+				$gene{$id}{at_ortholog},
 				$f->{seq},
 				
 			), "\n";
@@ -239,7 +278,7 @@ foreach my $id (sort keys %gene) {
 	}
 }
 
-# part Y: some summary stats
+# part 7: some summary stats
 my $genes = scalar keys %gene;
 my %error;
 my ($utr5, $utr3, $complete, $exons, $cds, $errors, %splices);
