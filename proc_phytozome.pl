@@ -262,15 +262,36 @@ foreach my $id (sort keys %gene) {
 		my $ftotal = @{$gene{$id}{$type}};
 		for (my $i = 0; $i < @{$gene{$id}{$type}}; $i++) {
 			my $f = $gene{$id}{$type}[$i];
+
+			# need to print whether this isoform is the primary version (longest)
+			# otherwise, call it secondary. Might use this info later on in downstream steps
+			my $isoform = "secondary";
+			$isoform = "primary" if $gene{$id}{longest};
+			
+			# also ned to flag whether this feature belongs to a complete transcript (with 5' & 3' UTR)
+			# or is missing one or the other
+			my $transcript_status;
+			if ($gene{$id}{five_prime_UTR} and $gene{$id}{three_prime_UTR}){
+				$transcript_status = "5-3";								
+			} elsif($gene{$id}{five_prime_UTR}){
+				$transcript_status = "5-";					
+			} elsif($gene{$id}{three_prime_UTR}){
+				$transcript_status = "-3";		
+			} else{
+				$transcript_status = "-";			
+			}
+			
 			print join("\t",
 				$id,
 				$gene{$id}{local_id},
+				$isoform,
+				$transcript_status,
+				$gene{$id}{at_ortholog},
 				$type,
 				$f->{beg} +1 - $tss,
 				$f->{end} +1 - $tss,
 				$i + 1,
 				$ftotal,
-				$gene{$id}{at_ortholog},
 				$f->{seq},
 				
 			), "\n";
