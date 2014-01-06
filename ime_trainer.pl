@@ -38,8 +38,7 @@ die "IMEter 3-style training not yet supported\n" if $opt_3;
 
 my %count;
 my %log;
-my %genecount;
-my %isocount;
+my %transcript_count;
 
 foreach my $file (@ARGV) {
 	open(my $fh, $file) or die;
@@ -55,8 +54,7 @@ foreach my $file (@ARGV) {
 		my ($beg, $end) = $coor =~ /COORDS=(\d+)\-(\d+)/;
 		($iso) = $iso =~ /ISOFORM=(\S+)/;
 		($strct) = $strct =~ /STRUCTURE=(\S+)/;
-		$genecount{$id1}++;
-		$isocount{$id2}++;
+		$transcript_count{$id1}++;
 		
 		# filtering
 		if ($opt_c and $strct ne '5-3') {
@@ -99,9 +97,8 @@ foreach my $file (@ARGV) {
 
 # status report
 no warnings;
-print STDERR "genes:               ", scalar keys %genecount, "\n";
-print STDERR "isoforms             ", scalar keys %isocount, "\n";
-print STDERR "genes not counted:   ", scalar keys %{$log{skipped_incomplete}}, "\n";
+print STDERR "transcripts:               ", scalar keys %transcript_count, "\n";
+print STDERR "transcripts not counted:   ", scalar keys %{$log{skipped_incomplete}}, "\n";
 
 print STDERR "introns counted:     ", $log{intron}, "\n";
 print STDERR "introns not counted: ", scalar keys %{$log{skipped_secondary}}, "\n";
@@ -125,7 +122,7 @@ foreach my $kmer (keys %count) {
 	}
 }
 if ($low_counts) {
-	print STDERR "WARNING: low k-mer counts in $low_counts k-mers, increase -k\n";
+	print STDERR "WARNING: low k-mer counts in $low_counts k-mers, decrease -k\n";
 }
 exit if $opt_v;
 
