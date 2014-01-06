@@ -276,14 +276,23 @@ sub process_species{
 		# 3. Best hit for A. thaliana ortholog (may not be present)
 	
 		my @f = split(/\t/);
-		my ($id ,$transcript_ID, $ortholog) = ($f[0], $f[2], $f[10]);
-
-		# ortholog may not be present, so set to NA
-		$ortholog = "NA" if not defined $ortholog;
-		$ortholog = "NA" if $ortholog eq "";
+		
+		# may have to treat these fields slightly differently for some species
+		# because - frustratingly - not all species have the same info in Phytozome
+		my ($id ,$transcript_ID, $ortholog);
+		
+		if($species eq 'Csubellipsoidea_C-169'){
+			($id ,$transcript_ID, $ortholog) = ($f[0], $f[1], $f[8]);
+		} elsif($species eq 'Mpusilla_CCMP1545'){
+			($id ,$transcript_ID, $ortholog) = ($f[0], $f[1], $f[8]);
+		} elsif($species eq 'Mpusilla_RCC299'){
+			($id ,$transcript_ID, $ortholog) = ($f[0], $f[1], $f[8]);
+		} else{
+			($id ,$transcript_ID, $ortholog) = ($f[0], $f[2], $f[10]);	
+		}
 
 		# add to master hash
-		$gene{$id}{local_id}    = $transcript_ID;
+		$gene{$id}{local_id} = $transcript_ID;
 		$gene{$id}{ortholog} = $ortholog;
 	}
 	close $afh;
@@ -341,16 +350,25 @@ sub process_species{
 				my $beg = $f->{beg} + 1 - $tss;
 				my $end = $f->{end} + 1 - $tss;
 				my $position = $i + 1;
+
+
+				# local ID and ortholog information may not be present in annotation file 
+				# or may be missing in annotation file (but present in GFF file)
+				$gene{$id}{local_id} = "NA" if not defined $gene{$id}{local_id};
+				$gene{$id}{local_id} = "NA" if             $gene{$id}{local_id} eq "";
+				$gene{$id}{ortholog} = "NA" if not defined $gene{$id}{ortholog};
+				$gene{$id}{ortholog} = "NA" if             $gene{$id}{ortholog} eq "";
+
 				print $out ">${STUB}_$n TYPE=$type POS=${position}/$ftotal COORDS=$beg-$end ";
-				print $out "ID1=$id ID2=$gene{$id}{local_id} ISOFORM=$isoform STRUCTURE=$structure ORTHOLOG=$gene{$id}{ortholog}\n";
+				print $out "ID1=$id ";
+				print $out "ID2=$gene{$id}{local_id} ";
+				print $out "ISOFORM=$isoform STRUCTURE=$structure ORTHOLOG=$gene{$id}{ortholog}\n";
 				print $out "$tidied_seq\n";
 			}
 		}
 
 		close($out);
 	}
-
-
 
 
 
