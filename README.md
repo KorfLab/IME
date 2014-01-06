@@ -24,8 +24,8 @@ annotations). It also logs to a separate how many errors were found with the ann
 
 The FASTA header of the output file stores a lot of meta information. E.g.
 
->IME_Acoerulea_1 TYPE=intron POS=1/1 COORDS=1594-3461 ID1=22022986 ID2=Aquca_023_00143.1 
-ISOFORM=primary STRUCTURE=5-3 ORTHOLOG=AT1G18740.1
+	>IME_Acoerulea_1 TYPE=intron POS=1/1 COORDS=1594-3461 ID1=22022986 ID2=Aquca_023_00143.1 
+	ISOFORM=primary STRUCTURE=5-3 ORTHOLOG=AT1G18740.1
 
 These fields correspond to:
 				
