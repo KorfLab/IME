@@ -16,7 +16,7 @@ use vars qw($opt_h $opt_t $opt_s);
 getopts('ht:s:');
 
 die "
-usage: fastify_IME_data.pl -f <type> <FASTA definition stub> <IME data file>
+usage: fastify_IME_data.pl -t <type> -s <FASTA definition stub> <IME data file>
 
 type must be either: i (intron), e (exon), 5 (5' UTR), or 3 (3' UTR)
 
