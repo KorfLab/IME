@@ -1,0 +1,63 @@
+
+GENOME: /Volumes/Scratch/Phytozome/v9.0/Athaliana
+GENES: 35386
+GENES_WITH_ERRORS: 1417
+GENES_KEPT: 33969
+EXONS: 207465
+CDS:   197160
+5'UTR: 35386
+3'UTR: 35386
+COMPLETE: 35386
+Error types:
+	internal_stop: 45
+	max_3utr: 317
+	max_5utr: 100
+	max_intron: 2
+	min_cds: 783
+	min_intron: 94
+	non_canonical_splice: 104
+	start_not_found: 21
+	stop_not_found: 48
+Splice sites:
+	GT..AG	170020
+	GC..AG	1855
+	AT..AC	92
+	GA..AG	16
+	GT..AT	14
+	GT..AC	13
+	TT..AG	7
+	AT..AG	7
+	GT..TG	5
+	GT..GG	4
+	GG..AT	3
+	AG..AG	3
+	AT..AA	3
+	GT..TT	3
+	TA..AG	2
+	CA..AG	2
+	AG..CA	2
+	GT..CG	2
+	CT..AG	2
+	TG..TA	2
+	GT..TC	1
+	GT..CC	1
+	GT..CT	1
+	CT..AC	1
+	TC..CA	1
+	TG..AT	1
+	TG..TC	1
+	GT..GT	1
+	GG..TT	1
+	TG..GT	1
+	CG..TA	1
+	TG..CT	1
+	CT..AT	1
+	CG..AG	1
+	TA..AT	1
+	GT..AA	1
+	GC..CT	1
+	GT..TA	1
+	CG..AA	1
+	CT..GC	1
+	GG..TA	1
+	AT..AT	1

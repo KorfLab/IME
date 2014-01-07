@@ -107,6 +107,7 @@ Any species matching the text in the space-separated list (provided by -i option
 be skipped. Some species with very large number of sequences in their genomes take a long
 time to process.
 
+
 ## Training IMEter from an sequence file ##
 
 With the files produced by proc_phytozome.pl, we can now generate an IMEter parameter 
@@ -114,3 +115,106 @@ file. These files simply contain the log-odd ratios of a set of k-mers in relati
 presence in a) a set of proximal introns (or exons, 5' UTRs etc) and b) a set of distal
 introns.
 
+There are many different ways of defining proximal and distal (1st introns vs 5th introns, 
+introns that start < 400 nt from the TSS vs introns that start > 600 nt etc). The ime_trainer.pl
+script can make these considerations. You can specify:
+
++ k (the word size to use)
++ proximal cutoff using nt coordinates
++ distal cutoff using nt coordinates
++ proximal cutoff using intron position
++ distal cutoff using intron position
++ require complete transcripts (those with both 5' and 3' UTRs annotated)
++ only use introns from primary isoform (defined by Phytozome as the longest transcript)
+
+These options let you a train an IMEter based on your specific preferences, or based on
+limitations in the data. E.g. in less well annotated genomes, there may be fewer annotated
+UTRs, which means that coordinate based cutoffs may be less accurate (because you may not
+know the true start of the transcript).
+
+We trained the latest version of the IMEter like so:
+
+	ime_trainer.pl -k 5 -p 400 -d 400 -c Athaliana_IME_intron.fa > Ath_IME_k5_400_400_complete.params
+
+The first three parameters (k = 5, proximal and distal cutoff = 400 nt from TSS) were the
+same as used in the last published version of the IMEter. Previously we used data from 
+TAIR and slightly different filtering criteria. Here, the -c option restricts the script to
+only train from transcripts with 5' and 3' UTRs. The lack of the -i option means that
+we are not relying on just the primary isoform. If a gene has multiple transcripts, all our
+used to train the IMEter.
+
+As the script runs, it will produce some statistics:
+
+	transcripts:               28264
+	transcripts not counted:   5850
+	introns counted:     138144
+	introns not counted: 0
+	proximal introns:    15353
+	distal introns:      122791
+	skipped kmers:       5 maximum = YTGAT (2)
+
+The final parameter file will look something like this:
+
+	# Tue Jan  7 14:43:15 PST 2014
+	# build: ime_trainer.pl -k 5 -p 400 -d 400  Athaliana_IME_intron.fa
+	CGCCG   1.10897312057382
+	CGATC   0.921820072157225
+	CGATT   0.81969009831468
+	CGGCG   0.797696787102772
+	TAGGG   0.794118008200588
+	TCGAT   0.770999201902767
+	GATCG   0.76909931626015
+	CGTCG   0.706287329644666
+	CGAAT   0.705383772622727
+	TCGAA   0.701293730930862
+	TCCGA   0.6982803816796
+
+Each line shows the log-odds ratio of the frequency of the specified kmer in the proximal
+data set vs the distal data set. This file is required by the main IMEter script.
+
+
+## Generating many parameter files ##
+
+If you want to try lots of different parameter combinations, you can use the 
+ime_explore_parameter_space.pl script. This is a wrapper script around the ime_trainer.pl
+script and changes several of the parameters in a set of nested loops. For each final
+combination of parameters, it runs ime_trainer.pl and produces an output file.
+
+It then runs the main imeter.pl script (see below) using that parameter file to score a set 
+of wild-type Arabidopsis intron sequences for which we know (experimentally) how much they
+increase expression (relative to an intronless control). E.g.
+
+	ime_explore_parameter_space.pl Athaliana_IME_intron.fa db_IME_all_WT_introns.fa final_IME_scores_all_WT.tsv
+	
++ The first argument is the input data to train from.
++ The second argument is the file of 15 introns for which we know how much the intron
+increases expression (if at all)
++ The third argument is the name of a final output file in which to put the IMEter scores
+for all introns in the test file, under all parameter combinations.
+
+
+## Running the IMEter ##
+
+When you have a set of parameters that you want to use, you can use these with the imeter.pl
+script:
+	
+	imeter.pl -m Ath_IME_k5_400_400_complete.params db_IME_all_WT_introns.fa
+
+There are many options to further change how the IMEter scores a sequence:
+
+	Options:
+	  -w <int>     window size nt    [default 7]
+	  -s <int>     step size  nt     [default 1]
+	  -d <int>     donor sequence to clip [default 5]
+	  -a <int>     acceptor sequence to clip [default 10]
+	  -g <int>     minimum gap allowed between high scoring windows [default 5]
+	  -c <float>   threshold value to decide what is a high scoring window [default 1.2]
+	  -f <int>     weighting factor to penalize peaks that are further away [default 200]
+	  -m <file>    IMEter parameter file [default is to use embedded pentamers]
+	  -r           calculate score for reverse strand
+	  -o		   print GFF info of each peak
+	  
+If you do not specify a parameter file (-m option) a default set of embedded parameter
+values are used. These correspond to the following run of ime_trainer.pl
+
+	  ime_trainer.pl -k 5 -p 400 -d 400 -c Athaliana_IME_intron.fa > Ath_IME_k5_400_400_complete.params
