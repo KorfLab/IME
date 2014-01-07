@@ -98,3 +98,19 @@ Verbose mode (-v) will give you information about the scripts's progress. E.g.
 		Step 6: final output
 			Creating Acoerulea_IME_exon.fa
 			Creating Acoerulea_IME_intron.fa
+			
+May want to skip some problem species by using the -i option:
+
+	proc_phytozome.pl -v -i "Mdomestica Pvirgatum Rcommunis" /Volumes/Scratch/Phytozome/v9.0/
+	
+Any species matching the text in the space-separated list (provided by -i option) will
+be skipped. Some species with very large number of sequences in their genomes take a long
+time to process.
+
+## Training IMEter from an sequence file ##
+
+With the files produced by proc_phytozome.pl, we can now generate an IMEter parameter 
+file. These files simply contain the log-odd ratios of a set of k-mers in relation to their
+presence in a) a set of proximal introns (or exons, 5' UTRs etc) and b) a set of distal
+introns.
+

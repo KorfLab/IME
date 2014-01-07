@@ -5,8 +5,8 @@ use File::Basename;
 use FAlite;
 use IK;
 use Getopt::Std;
-use vars qw($opt_h $opt_m $opt_M $opt_5 $opt_3 $opt_c $opt_C $opt_s $opt_v);
-getopts('hm:M:5:3:c:Cs:v');
+use vars qw($opt_h $opt_m $opt_M $opt_5 $opt_3 $opt_c $opt_C $opt_s $opt_v $opt_i);
+getopts('hm:M:5:3:c:Cs:vi:');
 use DataBrowser;
 
 my $MIN_INTRON = 35;
@@ -30,6 +30,7 @@ gene-level errors (these will be omitted from output files)
   -C CDS length must be a multiple of 3
   -s <text> stub prefix name for inclusion in FASTA header
   -v verbose mode. Shows progress through each stage.
+  -i ignore species that match pattern \"x\" (separate multiple species by spaces)
 
 Minimum usage example: proc_phytozome /path/to/Phytozome/v9.0/
   
@@ -47,18 +48,43 @@ $CDS_MOD3   = $opt_C;
 my ($DIR) = @ARGV;
 
 
+my @to_ignore;
+if ($opt_i){
+	@to_ignore = split(/\s+/, $opt_i);
+}
+
+
 my @species_directories = glob("$DIR*");
 
 
-foreach my $species_dir (@species_directories){
+SPECIES: foreach my $species_dir (@species_directories){
 	my ($species, $directory) = fileparse($species_dir);
-
-	$STUB = "IME_$species" if (not $opt_s);
 
 	# skip early release data
 	next if $species eq "early_release";
-
+	
 	warn "Processing data for $species\n"; 
+
+	# skip any species to ignore
+	foreach my $ignore (@to_ignore){
+		if($ignore =~ m/$species/){
+			warn "\tthis is is on the ignore list, skipping...\n";
+			next SPECIES;		
+		}
+	}
+
+	# skip to next species if files exist?
+	if(-e "${species}_IME_exon.fa" and 
+	   -e "${species}_IME_intron.fa" and 
+	   -e "${species}_IME_five_prime_UTR.fa" and 
+	   -e "${species}_IME_three_prime_UTR.fa" and 
+	   -e "${species}_IME_errors.txt"){
+		warn "\tFiles already exist for this species, skipping...\n";
+	   	next;
+	   }
+
+	$STUB = "IME_$species" if (not $opt_s);
+
 
 	# will process 3 files for each species: 
 	# 1) a FASTA file with the genome assembly/sequence
@@ -160,15 +186,13 @@ sub process_species{
 	# use a secondary hash to track genes that have had their sequences extracted
 	# this will get smaller as each gene is processed and this will speed things up a lot
 	my %tmp_gene = %gene;
-
 	open(my $ffh, "gunzip -c $FASTA |") or die;
 	my $fasta = new FAlite($ffh);
+
 	while (my $entry = $fasta->nextEntry) {
 		my ($chrom) = $entry->def =~ /^>(\S+)/;
-		
 	#	foreach my $id (keys %gene) {
 		foreach my $id (keys %tmp_gene) {
-
 			next unless $gene{$id}{chrom} eq $chrom;
 		
 			# add sequence attributes

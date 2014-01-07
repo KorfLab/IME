@@ -115,11 +115,18 @@ if ($kerr) {
 my $low_counts;
 foreach my $kmer (keys %count) {
 	if (not defined $count{$kmer}{proximal} or
-		not defined $count{$kmer}{proximal} or
-		$count{$kmer}{proximal} < 10 or 
+		not defined $count{$kmer}{distal}){
+		$low_counts++;
+
+		# set count to 1 so as to not break log function later on
+		$count{$kmer}{proximal} = 1 if not defined $count{$kmer}{proximal};
+		$count{$kmer}{distal}   = 1 if not defined $count{$kmer}{distal};
+
+	} elsif ($count{$kmer}{proximal} < 10 or 
 		$count{$kmer}{distal} < 10) {
 		$low_counts++;
 	}
+
 }
 if ($low_counts) {
 	print STDERR "WARNING: low k-mer counts in $low_counts k-mers, decrease -k\n";
@@ -139,6 +146,7 @@ my %lod;
 foreach my $kmer (keys %count) {
 	$lod{$kmer} = log(($count{$kmer}{proximal}/$ptotal) / ($count{$kmer}{distal}/$dtotal)) / log(2), "\n";
 }
+
 foreach my $kmer (sort {$lod{$b} <=> $lod{$a}} keys %lod) {
 	print "$kmer\t$lod{$kmer}\n";
 }
