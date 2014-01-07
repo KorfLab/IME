@@ -114,16 +114,15 @@ if ($kerr) {
 }
 my $low_counts;
 foreach my $kmer (keys %count) {
-	if (not defined $count{$kmer}{proximal} or
-		not defined $count{$kmer}{distal}){
-		$low_counts++;
+	
+	# pseudocount everything to make sure we have no zero
+	# counts later on (can't take a log of zero)
+	$count{$kmer}{proximal}++;
+	$count{$kmer}{distal}++;
 
-		# set count to 1 so as to not break log function later on
-		$count{$kmer}{proximal} = 1 if not defined $count{$kmer}{proximal};
-		$count{$kmer}{distal}   = 1 if not defined $count{$kmer}{distal};
-
-	} elsif ($count{$kmer}{proximal} < 10 or 
-		$count{$kmer}{distal} < 10) {
+	# keep track of those which are still 'low'
+	if ($count{$kmer}{proximal} < 11 or 
+		$count{$kmer}{distal}   < 11) {
 		$low_counts++;
 	}
 
