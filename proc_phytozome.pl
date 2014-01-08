@@ -21,8 +21,8 @@ use File::Basename;
 use FAlite;
 use IK;
 use Getopt::Std;
-use vars qw($opt_h $opt_m $opt_M $opt_5 $opt_3 $opt_c $opt_C $opt_s $opt_v $opt_i);
-getopts('hm:M:5:3:c:Cs:vi:');
+use vars qw($opt_h $opt_m $opt_M $opt_5 $opt_3 $opt_c $opt_C $opt_s $opt_v $opt_i $opt_1);
+getopts('hm:M:5:3:c:Cs:vi:1');
 use DataBrowser;
 
 my $MIN_INTRON = 35;
@@ -45,6 +45,7 @@ gene-level errors (these will be omitted from output files)
   -c <int> minimum CDS length [$MIN_CDS]
   -C CDS length must be a multiple of 3
   -s <text> stub prefix name for inclusion in FASTA header
+  -1 Specify a species-specific directory (default is to work through all species)
   -v verbose mode. Shows progress through each stage.
   -i ignore species that match pattern \"x\" (separate multiple species by spaces)
 
@@ -70,17 +71,25 @@ if ($opt_i){
 }
 
 
-my @species_directories = glob("$DIR*");
+# are we processing all species, or just one?
+my @species_directories;
 
+if($opt_1){
+	@species_directories = "$DIR";
+	$species_directories[0] =~ s/\/$//;
+} else{
+	@species_directories = glob("$DIR*");
+}
 
 SPECIES: foreach my $species_dir (@species_directories){
+
 	my ($species, $directory) = fileparse($species_dir);
 
 	# skip early release data
 	next if $species eq "early_release";
 	
 	warn "Processing data for $species\n"; 
-
+	
 	# skip any species to ignore
 	foreach my $ignore (@to_ignore){
 		if($ignore =~ m/$species/){
@@ -88,7 +97,7 @@ SPECIES: foreach my $species_dir (@species_directories){
 			next SPECIES;		
 		}
 	}
-
+	
 	# skip to next species if files exist?
 	if(-e "${species}_IME_exon.fa" and 
 	   -e "${species}_IME_intron.fa" and 
@@ -97,7 +106,7 @@ SPECIES: foreach my $species_dir (@species_directories){
 	   -e "${species}_IME_errors.txt"){
 		warn "\tFiles already exist for this species, skipping...\n";
 	   	next;
-	   }
+	}
 
 	$STUB = "IME_$species" if (not $opt_s);
 
@@ -130,10 +139,12 @@ exit;
 
 sub process_species{
 	my ($species, $directory, $FASTA, $GFF, $ANNOTATION) = @_;
-	# Step 1: get all the genes (actually only the longest variant at each locus)
+
+
+	# Step 1: get all the transcript details from the GFF file
 	warn "\tStep 1: processing GFF file\n" if $VERBOSE;
 
-	my %gene;
+	my %transcripts;
 
 	open(my $gfh, "gunzip -c $GFF |") or die;
 	while (<$gfh>) {
@@ -142,30 +153,30 @@ sub process_species{
 		my ($id) = $group =~ /ID=PAC:(\d+)/;
 		if ($fea eq 'mRNA') {
 			my ($name) = $group =~ /Name=(\S+?);/;
-			$gene{$id}{name} = $name;
-			$gene{$id}{longest} = 1 if $group =~ /longest=1/;
+			$transcripts{$id}{name} = $name;
+			$transcripts{$id}{longest} = 1 if $group =~ /longest=1/;
 		}
 		next if not defined $id;
-		$gene{$id}{chrom} = $seq;
-		$gene{$id}{strand} = $str;
-		push @{$gene{$id}{$fea}}, {
+		$transcripts{$id}{chrom} = $seq;
+		$transcripts{$id}{strand} = $str;
+		push @{$transcripts{$id}{$fea}}, {
 			beg => $beg,
 			end => $end,
 		};
 	}
 	close $gfh;
 
-	foreach my $id (keys %gene) {
+	foreach my $id (keys %transcripts) {
 		foreach my $feature ('exon', 'three_prime_UTR', 'five_prime_UTR') {
-			if (not defined $gene{$id}{$feature}) {
-				$gene{$id}{$feature} = [];
+			if (not defined $transcripts{$id}{$feature}) {
+				$transcripts{$id}{$feature} = [];
 			} else {
-				my @stuff = sort {$a->{beg} <=> $b->{beg}} @{$gene{$id}{$feature}};
-				$gene{$id}{$feature} = \@stuff;
+				my @stuff = sort {$a->{beg} <=> $b->{beg}} @{$transcripts{$id}{$feature}};
+				$transcripts{$id}{$feature} = \@stuff;
 			}
 		}
 	
-		$gene{$id}{tss} = $gene{$id}{exon}[0]{beg};
+		$transcripts{$id}{tss} = $transcripts{$id}{exon}[0]{beg};
 	}
 
 
@@ -173,8 +184,8 @@ sub process_species{
 	# Step 2: create introns and cds_length attributes
 	warn "\tStep 2: creating intron information from exon data\n" if $VERBOSE;
 
-	foreach my $id (keys %gene) {
-		my @exon = @{$gene{$id}{exon}};
+	foreach my $id (keys %transcripts) {
+		my @exon = @{$transcripts{$id}{exon}};
 		my @intron;
 		for (my $i = 1; $i < @exon; $i++) {
 			push @intron, {
@@ -182,61 +193,59 @@ sub process_species{
 				end => $exon[$i  ]{beg} - 1,
 			}
 		}
-		$gene{$id}{intron} = \@intron;
+		$transcripts{$id}{intron} = \@intron;
 	
 		my $cds_length;
-		foreach my $exon (@{$gene{$id}{CDS}}) {
+		foreach my $exon (@{$transcripts{$id}{CDS}}) {
 			my $len = $exon->{end} - $exon->{beg} + 1;
 			$cds_length += $len;
 		}
 	
-		$gene{$id}{cds_length} = $cds_length;	
+		$transcripts{$id}{cds_length} = $cds_length;	
 	}
 
 
 
 	# Step 3: read fasta file to add sequence-based attributes
-
 	warn "\tStep 3: processing genome sequence file\n" if $VERBOSE;
 
 	# use a secondary hash to track genes that have had their sequences extracted
 	# this will get smaller as each gene is processed and this will speed things up a lot
-	my %tmp_gene = %gene;
+	my %tmp_transcripts = %transcripts;
 	open(my $ffh, "gunzip -c $FASTA |") or die;
 	my $fasta = new FAlite($ffh);
 
 	while (my $entry = $fasta->nextEntry) {
 		my ($chrom) = $entry->def =~ /^>(\S+)/;
-	#	foreach my $id (keys %gene) {
-		foreach my $id (keys %tmp_gene) {
-			next unless $gene{$id}{chrom} eq $chrom;
+		foreach my $id (keys %tmp_transcripts) {
+			next unless $transcripts{$id}{chrom} eq $chrom;
 		
 			# add sequence attributes
-			my $strand = $gene{$id}{strand};
+			my $strand = $transcripts{$id}{strand};
 			foreach my $type ('intron', 'exon', 'five_prime_UTR', 'three_prime_UTR') {
-				foreach my $f (@{$gene{$id}{$type}}) {
+				foreach my $f (@{$transcripts{$id}{$type}}) {
 					$f->{seq} = extract_seq($f, $strand, $entry);
 				}
 			}
 		
 			# build cds sequence
 			my $cds_seq;
-			foreach my $cds (sort {$a->{beg} <=> $b->{beg}} @{$gene{$id}{CDS}}) {
+			foreach my $cds (sort {$a->{beg} <=> $b->{beg}} @{$transcripts{$id}{CDS}}) {
 				$cds_seq .= substr($entry->{SEQ}, $cds->{beg}-1,
 					$cds->{end} - $cds->{beg} + 1);
 			}
-			if ($gene{$id}{strand} eq '-') {
+			if ($transcripts{$id}{strand} eq '-') {
 				$cds_seq =~ tr[ACGTRYMKWSBDHV]
 							  [TGCAYRKMWSVHDB];
 				$cds_seq = reverse $cds_seq;
 			}
-			$gene{$id}{cds_seq} = $cds_seq;
+			$transcripts{$id}{cds_seq} = $cds_seq;
 		
 			# translate
-			$gene{$id}{protein} = IK::translate($cds_seq);
+			$transcripts{$id}{protein} = IK::translate($cds_seq);
 		
-			# can remove the gene ID from tmp_gene as we won't need to look at it again
-			delete $tmp_gene{$id};	
+			# can remove the gene ID from tmp_transcripts as we won't need to look at it again
+			delete $tmp_transcripts{$id};	
 		}
 	}
 	close $ffh;
@@ -251,51 +260,52 @@ sub process_species{
 		"AT..AC" => 1,
 	);
 
-	foreach my $id (keys %gene) {
+	foreach my $id (keys %transcripts) {
 	
 		# intron length
-		foreach my $intron (@{$gene{$id}{intron}}) {
+		foreach my $intron (@{$transcripts{$id}{intron}}) {
 			my $len = $intron->{end} - $intron->{beg} +1;
-			if    ($len < $MIN_INTRON) {$gene{$id}{error}{min_intron}++}
-			elsif ($len > $MAX_INTRON) {$gene{$id}{error}{max_intron}++}
+			if    ($len < $MIN_INTRON) {$transcripts{$id}{error}{min_intron}++}
+			elsif ($len > $MAX_INTRON) {$transcripts{$id}{error}{max_intron}++}
 		}
 	
 		# 5' and 3' UTR count
-		my $n5 = @{$gene{$id}{five_prime_UTR}}
-			? @{$gene{$id}{five_prime_UTR}}
+		my $n5 = @{$transcripts{$id}{five_prime_UTR}}
+			? @{$transcripts{$id}{five_prime_UTR}}
 			: 0;
-		my $n3 = @{$gene{$id}{three_prime_UTR}}
-			? @{$gene{$id}{three_prime_UTR}}
+		my $n3 = @{$transcripts{$id}{three_prime_UTR}}
+			? @{$transcripts{$id}{three_prime_UTR}}
 			: 0;
-		$gene{$id}{error}{max_5utr}++ if $n5 > $MAX_5UTR;
-		$gene{$id}{error}{max_3utr}++ if $n3 > $MAX_3UTR;
+
+		$transcripts{$id}{error}{max_5utr}++ if $n5 > $MAX_5UTR;
+		$transcripts{$id}{error}{max_3utr}++ if $n3 > $MAX_3UTR;
 		
 		# exon count
-		if (not @{$gene{$id}{exon}}) {$gene{$id}{error}{no_exons}++}
+		if (not @{$transcripts{$id}{exon}}) {$transcripts{$id}{error}{no_exons}++}
 	
 		# cds length
-		if ($gene{$id}{cds_length} < $MIN_CDS) {$gene{$id}{error}{min_cds}++}
-		if ($gene{$id}{cds_length} % 3 != 0 and $CDS_MOD3)
-			{$gene{$id}{error}{cds_mod3}++}
+		if ($transcripts{$id}{cds_length} < $MIN_CDS) {$transcripts{$id}{error}{min_cds}++}
+		if ($transcripts{$id}{cds_length} % 3 != 0 and $CDS_MOD3)
+			{$transcripts{$id}{error}{cds_mod3}++}
 	
 		# multiple stop codons
-		my $protein = $gene{$id}{protein};
+		my $protein = $transcripts{$id}{protein};
 		my $stop_count = $protein =~ tr/*/*/;
 		if ($protein =~ /\*$/) {$stop_count--}
-		if ($stop_count != 0) {$gene{$id}{error}{internal_stop} = $stop_count}
+		if ($stop_count != 0) {$transcripts{$id}{error}{internal_stop} = $stop_count}
 	
 		# incomplete start/stop
-		if (substr($protein,  0, 1) ne 'M') {$gene{$id}{error}{start_not_found} = 1}
-		if (substr($protein, -1, 1) ne '*') {$gene{$id}{error}{stop_not_found} = 1}
+		if (substr($protein,  0, 1) ne 'M') {$transcripts{$id}{error}{start_not_found} = 1}
+		if (substr($protein, -1, 1) ne '*') {$transcripts{$id}{error}{stop_not_found} = 1}
 		
 		# splice sites
-		foreach my $intron (@{$gene{$id}{intron}}) {
+		foreach my $intron (@{$transcripts{$id}{intron}}) {
 			my $don = substr($intron->{seq}, 0, 2);
 			my $acc = substr($intron->{seq}, -2);
 			my $type = "$don..$acc";
-			$gene{$id}{splices}{$type}++;
+			$transcripts{$id}{splices}{$type}++;
 			if (not defined $canonical{$type}) {
-				$gene{$id}{error}{non_canonical_splice}++;
+				$transcripts{$id}{error}{non_canonical_splice}++;
 			}
 		}
 	}
@@ -303,9 +313,9 @@ sub process_species{
 
 
 
+	# Step 5: extract relevant info from annotation file
 	warn "\tStep 5: extracting extra information from Phytozome annotation file\n" if $VERBOSE;
 
-	# Step 5: extract relevant info from annotation file
 	open(my $afh, "gunzip -c $ANNOTATION |") or die;
 	while (<$afh>) {
 		next if /^#/;
@@ -332,8 +342,8 @@ sub process_species{
 		}
 
 		# add to master hash
-		$gene{$id}{local_id} = $transcript_ID;
-		$gene{$id}{ortholog} = $ortholog;
+		$transcripts{$id}{local_id} = $transcript_ID;
+		$transcripts{$id}{ortholog} = $ortholog;
 	}
 	close $afh;
 
@@ -353,27 +363,27 @@ sub process_species{
 
 		open(my $out, ">", $output_file) or die "Cannot write to $output_file";
 
-		foreach my $id (sort keys %gene) {
+		foreach my $id (sort keys %transcripts) {
 	
 			# skip genes with errors
-			next if ($gene{$id}{error});
+			next if ($transcripts{$id}{error});
 
-			my $tss = $gene{$id}{tss};
-			my $ftotal = @{$gene{$id}{$type}};
+			my $tss = $transcripts{$id}{tss};
+			my $ftotal = @{$transcripts{$id}{$type}};
 
-			for (my $i = 0; $i < @{$gene{$id}{$type}}; $i++) {
-				my $f = $gene{$id}{$type}[$i];
+			for (my $i = 0; $i < @{$transcripts{$id}{$type}}; $i++) {
+				my $f = $transcripts{$id}{$type}[$i];
 
 				# need to print whether this isoform is the primary version (longest)
 				# otherwise, call it secondary. Might use this info later on in downstream steps
 				my $isoform = "secondary";
-				$isoform = "primary" if $gene{$id}{longest};
+				$isoform = "primary" if $transcripts{$id}{longest};
 			
 				# also ned to flag whether this feature belongs to a complete transcript (with 5' & 3' UTR)
 				# or is missing one or the other. Capture 'structure' into a variable.
 				my $structure;
-				my $n5 = @{$gene{$id}{five_prime_UTR}};
-				my $n3 = @{$gene{$id}{three_prime_UTR}};
+				my $n5 = @{$transcripts{$id}{five_prime_UTR}};
+				my $n3 = @{$transcripts{$id}{three_prime_UTR}};
 
 				if ($n5 and $n3){
 					$structure = "5-3";								
@@ -394,19 +404,18 @@ sub process_species{
 
 				# local ID and ortholog information may not be present in annotation file 
 				# or may be missing in annotation file (but present in GFF file)
-				$gene{$id}{local_id} = "NA" if not defined $gene{$id}{local_id};
-				$gene{$id}{local_id} = "NA" if             $gene{$id}{local_id} eq "";
-				$gene{$id}{ortholog} = "NA" if not defined $gene{$id}{ortholog};
-				$gene{$id}{ortholog} = "NA" if             $gene{$id}{ortholog} eq "";
+				$transcripts{$id}{local_id} = "NA" if not defined $transcripts{$id}{local_id};
+				$transcripts{$id}{local_id} = "NA" if             $transcripts{$id}{local_id} eq "";
+				$transcripts{$id}{ortholog} = "NA" if not defined $transcripts{$id}{ortholog};
+				$transcripts{$id}{ortholog} = "NA" if             $transcripts{$id}{ortholog} eq "";
 
 				print $out ">${STUB}_$n TYPE=$type POS=${position}/$ftotal COORDS=$beg-$end ";
 				print $out "ID1=$id ";
-				print $out "ID2=$gene{$id}{local_id} ";
-				print $out "ISOFORM=$isoform STRUCTURE=$structure ORTHOLOG=$gene{$id}{ortholog}\n";
+				print $out "ID2=$transcripts{$id}{local_id} ";
+				print $out "ISOFORM=$isoform STRUCTURE=$structure ORTHOLOG=$transcripts{$id}{ortholog}\n";
 				print $out "$tidied_seq\n";
 			}
 		}
-
 		close($out);
 	}
 
@@ -417,45 +426,48 @@ sub process_species{
 	open(my $out, ">", $error_file) or die "Cannot write to $error_file";
 
 	# Step 7: some summary stats
-	my $genes = scalar keys %gene;
+	my $transcripts = scalar keys %transcripts;
 	my %error;
-	my ($utr5, $utr3, $complete, $exons, $cds, $errors, %splices);
+	my ($utr5, $utr3, $complete, $exons, $cds, $errors, %splices) = (0, 0, 0, 0, 0, 0);
 	my $kept = 0;
 
-	foreach my $id (keys %gene) {
+	foreach my $id (keys %transcripts) {
 
-		my $u5 = exists $gene{$id}{five_prime_UTR};
-		my $u3 = exists $gene{$id}{three_prime_UTR};
-		$exons += @{$gene{$id}{exon}};
-		$cds += @{$gene{$id}{CDS}};
+#		my $u5 = exists $transcripts{$id}{five_prime_UTR};
+#		my $u3 = exists $transcripts{$id}{three_prime_UTR};
+		my $u5 = @{$transcripts{$id}{five_prime_UTR}};
+		my $u3 = @{$transcripts{$id}{three_prime_UTR}};
+		
+		$exons += @{$transcripts{$id}{exon}};
+		$cds += @{$transcripts{$id}{CDS}};
 		$utr5++ if $u5;
 		$utr3++ if $u3;
 		$complete++ if $u5 and $u3;
 	
-		if (exists $gene{$id}{error}) {
+		if (exists $transcripts{$id}{error}) {
 			$errors++; 
 
-			foreach my $etype (keys %{$gene{$id}{error}}) {
+			foreach my $etype (keys %{$transcripts{$id}{error}}) {
 				$error{$etype}++;
 			}
 		} else{
 			$kept++;
 		}
-		foreach my $type (keys %{$gene{$id}{splices}}) {
-			$splices{$type} += $gene{$id}{splices}{$type};
+		foreach my $type (keys %{$transcripts{$id}{splices}}) {
+			$splices{$type} += $transcripts{$id}{splices}{$type};
 		}
 	}
 
 	print $out "
 GENOME: ${directory}$species
-GENES: $genes
-GENES_WITH_ERRORS: $errors
-GENES_KEPT: $kept
+TRANSCRIPTS: $transcripts
+TRANSCRIPTS_WITH_ERRORS: $errors
+TRANSCRIPTS_RETAINED: $kept
 EXONS: $exons
 CDS:   $cds
-5'UTR: $utr5
-3'UTR: $utr3
-COMPLETE: $complete
+TRANSCRIPTS_WITH_5'UTR: $utr5
+TRANSCRIPTS_WITH_3'UTR: $utr3
+TRANSCRIPTS_WITH_BOTH_UTRS: $complete
 ";
 
 	print $out "Error types:\n";
