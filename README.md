@@ -218,3 +218,58 @@ If you do not specify a parameter file (-m option) a default set of embedded par
 values are used. These correspond to the following run of ime_trainer.pl
 
 	  ime_trainer.pl -k 5 -p 400 -d 400 -c Athaliana_IME_intron.fa > Ath_IME_k5_400_400_complete.params
+	  
+	  
+	  
+## Calculating scores at different distances from TSS ##
+
+There is another wrapper script (ime_distance_info.pl) that runs the imeter.pl script to 
+produce some more useful information about IMEter scores at different distances from
+the TSS. This script does 3 things:
+
+1. Script will look in the specified directory for IME intron files ('*.IME_intron.fa')
+and IME parameter files ('*.IME_intron.params'). For each intron file, it will 
+run the IMEter (imeter.pl) on the specified file using the specified parameters
+to produce a '*.IME_intron.ime' file containing IMEter scores for each intron.
+2. Script will then take the '*.IME_intron.ime' file and for each intron, will extract
+the distance from the transcription start site (TSS) from the FASTA file and append this
+information to a new output file ('*.IME_intron.ime2').
+3. Finally, the script will produce a third output file ('*.IME_intron.ime3') that averages
+all intron scores in binned windows of distance from the TSS. The default parameter
+takes windows of 200 bp from the TSS. In addition to calculating the average IMEter score
+for all introns that start in that window, the script outputs 95% confidence limits for
+the mean value.
+	
+Suggested usage:
+
+	ime_distance_from_tss.pl -w 100 -c 3000 -i ~/bin/imeter.pl ime_data_directory
+
+The first two output files may be of less use and can probably be discarded. The 3rd file
+is another tab-separated values file, that will look like this:
+
+	Bin     Start   End     Mean_score      N       Sum_score       Std_err Lower_CI        Upper_CI
+	1       1       100     4.39    2625    11528   0.09    4.21    4.57
+	2       101     200     4.56    4512    20552   0.07    4.42    4.70
+	3       201     300     3.28    6106    20013   0.05    3.18    3.38
+	4       301     400     2.57    7209    18497   0.04    2.49    2.65
+	5       401     500     2.14    7008    15023   0.03    2.08    2.20
+	6       501     600     1.83    6712    12266   0.03    1.77    1.89
+	7       601     700     1.64    6772    11102   0.03    1.58    1.70
+	8       701     800     1.55    6831    10619   0.03    1.49    1.61
+	9       801     900     1.50    6560    9836    0.03    1.44    1.56
+	10      901     1000    1.55    6476    10033   0.03    1.49    1.61
+	11      1001    1100    1.54    6484    9996    0.03    1.48    1.60
+	12      1101    1200    1.52    6162    9371    0.03    1.46    1.58
+	13      1201    1300    1.58    6102    9664    0.03    1.52    1.64
+	14      1301    1400    1.56    5612    8754    0.03    1.50    1.62
+	15      1401    1500    1.55    5390    8364    0.03    1.49    1.61
+	16      1501    1600    1.63    5120    8359    0.03    1.57    1.69
+	17      1601    1700    1.59    4785    7620    0.03    1.53    1.65
+	18      1701    1800    1.67    4525    7553    0.04    1.59    1.75
+	19      1801    1900    1.60    4196    6695    0.04    1.52    1.68
+	20      1901    2000    1.62    3951    6419    0.04    1.54    1.70
+	
+This shows the average IMEter score for the first 20 windows (size = 100 bp) from the TSS.
+This data — for A. thaliana — shows that IMEter scores drop very quickly after the first 
+400 bp or so, and then reach a uniform level. The average scores are fairly low due to 
+presence of thousands of introns with zero IMEter scores.	

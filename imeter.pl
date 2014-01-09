@@ -37,12 +37,12 @@ my $gff         = 0;
 my $weighting_factor = 200;
 
 getopts('w:s:d:c:a:f:g:rom:');
-$window_size   = $opt_w if $opt_w;
-$window_step  = $opt_s if $opt_s;
-$donor = $opt_d if $opt_d;
-$acceptor = $opt_a if $opt_a;
-$cutoff = $opt_c if $opt_c;
-$gap = $opt_g if $opt_g;
+$window_size      = $opt_w if $opt_w;
+$window_step      = $opt_s if $opt_s;
+$donor            = $opt_d if $opt_d;
+$acceptor         = $opt_a if $opt_a;
+$cutoff           = $opt_c if $opt_c;
+$gap              = $opt_g if $opt_g;
 $weighting_factor = $opt_f if $opt_f;
 
 $gff = 1 if $opt_o;
