@@ -113,19 +113,27 @@ foreach my $file (@ARGV) {
 
 # status report
 no warnings;
-print STDERR "transcripts:               ", scalar keys %transcript_count, "\n";
-print STDERR "transcripts not counted:   ", scalar keys %{$log{skipped_incomplete}}, "\n";
 
-print STDERR "introns counted:     ", $log{intron}, "\n";
-print STDERR "introns not counted: ", scalar keys %{$log{skipped_secondary}}, "\n";
+# output section
+print "# IME training log\n";
+print "# ----------------\n";
+print "#\n";
+print "# ", `date`;
+print "# build: $cmdline\n";
 
-print STDERR "proximal introns:    ", $log{proximal}, "\n";
-print STDERR "distal introns:      ", $log{distal}, "\n";
+print "# transcripts:               ", scalar keys %transcript_count, "\n";
+print "# transcripts not counted:   ", scalar keys %{$log{skipped_incomplete}}, "\n";
 
-print STDERR "skipped kmers:       ";
+print "# introns counted:     ", $log{intron}, "\n";
+print "# introns not counted: ", scalar keys %{$log{skipped_secondary}}, "\n";
+
+print "# proximal introns:    ", $log{proximal}, "\n";
+print "# distal introns:      ", $log{distal}, "\n";
+
+print "# skipped kmers:       ";
 my ($kerr) = sort {$log{skipped_kmer}{$b} <=> $log{skipped_kmer}{$a}} keys %{$log{skipped_kmer}};
 if ($kerr) {
-	print STDERR scalar keys %{$log{skipped_kmer}}, " maximum = ",
+	print scalar keys %{$log{skipped_kmer}}, " maximum = ",
 		"$kerr ($log{skipped_kmer}{$kerr})\n";
 }
 my $low_counts;
@@ -144,13 +152,10 @@ foreach my $kmer (keys %count) {
 
 }
 if ($low_counts) {
-	print STDERR "WARNING: low k-mer counts in $low_counts k-mers, decrease -k\n";
+	print "# WARNING: low k-mer counts in $low_counts k-mers, decrease -k\n";
 }
 exit if $opt_v;
 
-# output section
-print "# ", `date`;
-print "# build: $cmdline\n";
 my $ptotal;
 my $dtotal;
 foreach my $kmer (keys %count) {
@@ -161,6 +166,11 @@ my %lod;
 foreach my $kmer (keys %count) {
 	$lod{$kmer} = log(($count{$kmer}{proximal}/$ptotal) / ($count{$kmer}{distal}/$dtotal)) / log(2), "\n";
 }
+
+print "#\n";
+print "# IME parameters\n";
+print "# --------------\n";
+
 
 foreach my $kmer (sort {$lod{$b} <=> $lod{$a}} keys %lod) {
 	print "$kmer\t$lod{$kmer}\n";
