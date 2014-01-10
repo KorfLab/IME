@@ -141,36 +141,40 @@ same as used in the last published version of the IMEter. Previously we used dat
 TAIR and slightly different filtering criteria. Here, the -c option restricts the script to
 only train from transcripts with 5' and 3' UTRs. The lack of the -i option means that
 we are not relying on just the primary isoform. If a gene has multiple transcripts, all our
-used to train the IMEter.
+used to train the IMEter:
 
-As the script runs, it will produce some statistics:
-
-	transcripts:               28264
-	transcripts not counted:   5850
-	introns counted:     138144
-	introns not counted: 0
-	proximal introns:    15353
-	distal introns:      122791
-	skipped kmers:       5 maximum = YTGAT (2)
 
 The final parameter file will look something like this:
 
-	# Tue Jan  7 14:43:15 PST 2014
-	# build: ime_trainer.pl -k 5 -p 400 -d 400  Athaliana_IME_intron.fa
-	CGCCG   1.10897312057382
-	CGATC   0.921820072157225
-	CGATT   0.81969009831468
-	CGGCG   0.797696787102772
-	TAGGG   0.794118008200588
-	TCGAT   0.770999201902767
-	GATCG   0.76909931626015
-	CGTCG   0.706287329644666
-	CGAAT   0.705383772622727
-	TCGAA   0.701293730930862
-	TCCGA   0.6982803816796
+	# IME training log
+	# ----------------
+	#
+	# Fri Jan 10 11:10:51 PST 2014
+	# build: /Users/keith/Work/Code/IME/ime_trainer.pl -c -k 5 -p 400 -d 400 Crubella_IME_intron.fa
+	# transcripts:               20017
+	# transcripts not counted:   9082
+	# introns counted:     59702
+	# introns not counted: 0
+	# proximal introns:    5929
+	# distal introns:      53773
+	# skipped kmers:       169 maximum = NNNNN (7818)
+	#
+	# IME parameters
+	# --------------
+	CGATT   1.05876003163932
+	CGATC   1.03513727248767
+	TCGAT   0.989253683124108
+	CGACG   0.958234172791253
+	GATCG   0.953133431986251
+	TCGCG   0.906243637469971
+	CGGCG   0.896922851358586
+	TTCGA   0.872332381929915
+	CCGAT   0.865947978284506
+	TCCGA   0.843627296804883
 
-Each line shows the log-odds ratio of the frequency of the specified kmer in the proximal
-data set vs the distal data set. This file is required by the main IMEter script.
+After some statistics about the training run, each line shows the log-odds ratio of the 
+frequency of the specified kmer in the proximal data set vs the distal data set. This 
+parameter file is required by the main IMEter script.
 
 
 ## Generating many parameter files ##
