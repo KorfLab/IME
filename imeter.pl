@@ -78,10 +78,10 @@ my ($FASTA) = @ARGV;
 #
 ######################################
 
-my ($model, $wordsize, $info);
+my ($model, $wordsize);
 if ($opt_m) {
 	die "file not found $opt_m\n" unless -s $opt_m;
-	($model, $wordsize, $info) = read_imeter_parameter_file($opt_m);
+	($model, $wordsize) = read_imeter_parameter_file($opt_m);
 } else {
 	while (<DATA>) {
 		my ($word, $score) = split;
@@ -262,24 +262,18 @@ sub reverse_complement {
 sub read_imeter_parameter_file {
 	my ($file) = @_;
 
-	my $info;
 	my %model;
 	my $wordsize;
 	open(IN, $file) or die;
 	while (<IN>) {
-		if (/^#(.+)/) {
-			 $info = $1 if not defined $info;
-			 next;
-		}
+		next if (/^#(.+)/);
 		my ($word, $score) = split;
 		$word = uc $word;
 		$model{$word} = $score;
 		$wordsize = length($word) unless defined $wordsize;
 	}
-	close IN;
-	$info = "" unless defined $info;
-	
-	return \%model, $wordsize, $info;	
+	close IN;	
+	return (\%model, $wordsize);	
 }
 
 
