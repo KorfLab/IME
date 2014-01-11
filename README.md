@@ -199,8 +199,7 @@ for all introns in the test file, under all parameter combinations.
 
 ## Running the IMEter ##
 
-When you have a set of parameters that you want to use, you can use these with the imeter.pl
-script:
+You always need to use a suitable set of IME parameters with the imeter.pl script:
 	
 	imeter.pl -m Ath_IME_k5_400_400_complete.params db_IME_all_WT_introns.fa
 
@@ -216,12 +215,9 @@ There are many options to further change how the IMEter scores a sequence:
 	  -f <int>     weighting factor to penalize peaks that are further away [default 200]
 	  -m <file>    IMEter parameter file [default is to use embedded pentamers]
 	  -r           calculate score for reverse strand
-	  -o		   print GFF info of each peak
+  	  -p           A file of IMEter scores at each percentile (to include in output)
+  	  -o		   print GFF info of each peak
 	  
-If you do not specify a parameter file (-m option) a default set of embedded parameter
-values are used. These correspond to the following run of ime_trainer.pl
-
-	  ime_trainer.pl -k 5 -p 400 -d 400 -c Athaliana_IME_intron.fa > Ath_IME_k5_400_400_complete.params
 	  
 	  
 	  
@@ -249,7 +245,7 @@ an overview of what scores are 'high' or 'low'.
 	
 Suggested usage:
 
-	ime_distance_from_tss.pl -w 100 -c 2000 -i ~/bin/imeter.pl ime_data_directory
+	ime_distance_info.pl -w 100 -c 2000 -i ~/bin/imeter.pl ime_data_directory
 
 The first two output files may be of less use and can probably be discarded. The 3rd file
 is another tab-separated values file, that will look like this:
@@ -301,3 +297,5 @@ This can be simply be interpreted as follows:
 all intron scores. 
 + A score between 7.98 and 8.49 would put an intron into the 91st percentile.
 + Note, this file does not show the absolute highest score observed. 
++ These files can be included as an argument to the imeter.pl script (with the -p) option
+to include this information as an extra column in the IMEter output.
