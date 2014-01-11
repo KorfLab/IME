@@ -18,7 +18,7 @@
 use strict; use warnings;
 use FAlite;
 use Getopt::Std;
-use vars qw($opt_w $opt_s $opt_r $opt_g $opt_d $opt_a $opt_c $opt_f $opt_o $opt_p);
+use vars qw($opt_w $opt_s $opt_r $opt_g $opt_d $opt_a $opt_c $opt_f $opt_o $opt_m $opt_p);
 
 ################################
 #
@@ -37,7 +37,7 @@ my $gff         = 0;
 my $weighting_factor = 300;
 my $VERSION = "2.1";
 
-getopts('w:s:d:c:a:f:g:rop:');
+getopts('w:s:d:c:a:f:g:rom:p:');
 $window_size      = $opt_w if $opt_w;
 $window_step      = $opt_s if $opt_s;
 $donor            = $opt_d if $opt_d;
@@ -52,7 +52,7 @@ die "
 Note: Calculates IMEter v$VERSION scores, using default parameters from 
 Phytozome v9.0 Arabidopsis thalian introns (can be changed with -m option).
 
-usage: imeter.pl [options] <fasta file> <parameter file>
+usage: imeter.pl [options] -m <parameter file> <fasta file> 
 
 options:
   -w <int>     window size nt [default $window_size]
@@ -76,12 +76,12 @@ If a percentile file is specified, the output will also include a percentile val
 IMEter score of the intron being tested. E.g. a score of X ranks in the Yth Percentile
 of all intron scores for species Z.
 
-" unless @ARGV == 2;
+" unless @ARGV == 1;
 
 die "Window size (-w) must be at least 5\n" if ($window_size < 5);
 die "Window step (-s) must be <= window size (-w)\n" if ($window_step > $window_size);
 
-my ($FASTA, $PARAMETERS) = @ARGV;
+my ($FASTA) = @ARGV;
 
 
 ############################################################################
@@ -90,7 +90,7 @@ my ($FASTA, $PARAMETERS) = @ARGV;
 #
 ############################################################################
 
-my ($model, $wordsize) = read_imeter_parameter_file($PARAMETERS);
+my ($model, $wordsize) = read_imeter_parameter_file($opt_m);
 
 my %percentiles;
 read_imeter_percentile_file($opt_p) if ($opt_p);
