@@ -102,7 +102,7 @@ foreach my $file (@ARGV) {
 		for (my $i = 0; $i < length($seq) - $opt_k + 1; $i++) {
 			my $kmer = substr($seq, $i, $opt_k);
 			if ($kmer =~ /^[ACGT]+$/) {
-				$count{$kmer}{$class}++;
+ 				$count{$kmer}{$class}++;
 			} else {
 				$log{skipped_kmer}{$kmer}++;
 			}

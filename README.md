@@ -234,19 +234,22 @@ the TSS. This script does 3 things:
 1. Script will look in the specified directory for IME intron files ('*.IME_intron.fa')
 and IME parameter files ('*.IME_intron.params'). For each intron file, it will 
 run the IMEter (imeter.pl) on the specified file using the specified parameters
-to produce a '*.IME_intron.ime' file containing IMEter scores for each intron.
-2. Script will then take the '*.IME_intron.ime' file and for each intron, will extract
-the distance from the transcription start site (TSS) from the FASTA file and append this
+to produce a '*.IME_intron.ime1' file containing IMEter scores for each intron.
+2. Script will then take the '*.IME_intron.ime1' file and for each intron, will extract
+the distance from the transcription start site (TSS) from the FASTA file and include this
 information to a new output file ('*.IME_intron.ime2').
-3. Finally, the script will produce a third output file ('*.IME_intron.ime3') that averages
+3. The script will produce a third output file ('*.IME_intron.ime3') that averages
 all intron scores in binned windows of distance from the TSS. The default parameter
 takes windows of 200 bp from the TSS. In addition to calculating the average IMEter score
 for all introns that start in that window, the script outputs 95% confidence limits for
 the mean value.
+4. Finally, the script calculates what IMEter v2.1 score is at each percentile. This
+information is written to the fourth file ('*.IME_intron.ime4'). This is useful to give
+an overview of what scores are 'high' or 'low'.
 	
 Suggested usage:
 
-	ime_distance_from_tss.pl -w 100 -c 3000 -i ~/bin/imeter.pl ime_data_directory
+	ime_distance_from_tss.pl -w 100 -c 2000 -i ~/bin/imeter.pl ime_data_directory
 
 The first two output files may be of less use and can probably be discarded. The 3rd file
 is another tab-separated values file, that will look like this:
@@ -277,3 +280,24 @@ This shows the average IMEter score for the first 20 windows (size = 100 bp) fro
 This data — for A. thaliana — shows that IMEter scores drop very quickly after the first 
 400 bp or so, and then reach a uniform level. The average scores are fairly low due to 
 presence of thousands of introns with zero IMEter scores.	
+
+The end of the fourth output file, will look something like this (for A. thaliana):
+
+	90      7.54
+	91      7.98
+	92      8.50
+	93      9.17
+	94      9.96
+	95      10.96
+	96      12.13
+	97      13.67
+	98      16.05
+	99      19.71
+	100     39.61
+
+This can be simply be interpreted as follows:
+
++ Any IMEter score (v2.1) greater than 39.61 puts that intron into the 100th percentile of
+all intron scores. 
++ A score between 7.98 and 8.49 would put an intron into the 91st percentile.
++ Note, this file does not show the absolute highest score observed. 

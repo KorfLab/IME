@@ -28,13 +28,14 @@ use vars qw($opt_w $opt_s $opt_r $opt_g $opt_d $opt_a $opt_c $opt_f $opt_o $opt_
 
 # set up some default values
 my $window_step = 1;
-my $window_size = 7;
+my $window_size = 8;
 my $donor = 5;
 my $acceptor = 10;
 my $cutoff      =  1.2;
-my $gap         = 5; # how far can two peaks be apart to still be considered one peak?
+my $gap         = 3; # how far can two peaks be apart to still be considered one peak?
 my $gff         = 0; 
-my $weighting_factor = 200;
+my $weighting_factor = 300;
+my $VERSION = "2.1";
 
 getopts('w:s:d:c:a:f:g:rom:');
 $window_size      = $opt_w if $opt_w;
@@ -48,21 +49,26 @@ $weighting_factor = $opt_f if $opt_f;
 $gff = 1 if $opt_o;
 
 die "
-Note: Calculates IMEter v2.0 scores, using data trained from Phytozome v9.0 introns
+Note: Calculates IMEter v$VERSION scores, using default parameters from 
+Phytozome v9.0 Arabidopsis thalian introns (can be changed with -m option).
 
 usage: imeter.pl [options] <fasta file>
 
 options:
-  -w <int>     window size nt    [default $window_size]
-  -s <int>     step size  nt     [default $window_step]
+  -w <int>     window size nt [default $window_size]
+  -s <int>     step size nt [default $window_step]
   -d <int>     donor sequence to clip [default $donor]
   -a <int>     acceptor sequence to clip [default $acceptor]
   -g <int>     minimum gap allowed between high scoring windows [default $gap]
   -c <float>   threshold value to decide what is a high scoring window [default $cutoff]
   -f <int>     weighting factor to penalize peaks that are further away [default $weighting_factor]
-  -m <file>    IMEter parameter file [default is to use embedded pentamers]
+  -m <file>    IMEter parameter file [default is to use embedded pentamers from A. thaliana introns]
   -r           calculate score for reverse strand
   -o		   print GFF info of each peak
+
+Note that default output takes the form of:
+
+<sequence identifier>\t<version 1 IMEter score>\t<version $VERSION IMEter score>
 
 " unless @ARGV == 1;
 
@@ -110,18 +116,24 @@ while (my $entry = $fasta->nextEntry) {
 	my ($id) = $entry->def =~ /^>(\S+)/;
 	my $seq = uc $entry->seq;
 	
-
 	# clip sequence to remove donor and acceptor?
 	$seq = substr($seq, $donor, -$acceptor);
-	
-	# loop over input sequence in pentamer windows, and extract score from %pentamer_scores
+
+	my $imeter_v1_score = 0;
+	my $imeter_v2_score = 0;
+
+	# loop over input sequence in windows of size k, and score each kmer
+	# This is all we need to do to calculate IMEter v1 and v3 scores.
+
 	my @records;
+	
 	for (my $i = 0; $i <= length($seq) - $wordsize; $i++){
 	    my $subseq = substr($seq, $i, $wordsize);
 		# are we working on reverse strand?
 		$subseq = reverse_complement(substr($seq, $i, 5)) if ($opt_r);
 		$records[$i]{start}  = $i;
 	   	$records[$i]{end}    = $i + $wordsize -1;
+
 		# it's possible that input sequence has ambiguity codes, in which case we can't 
 		# calculate a pentamer score, so just set to 0.
 		if(defined $model->{$subseq}){
@@ -129,13 +141,10 @@ while (my $entry = $fasta->nextEntry) {
 		} else{
 		   	$records[$i]{score}  = 0;
 		}
-#		print "$records[$i]{start}-$records[$i]{end}) $records[$i]{score}\n";
+		$imeter_v1_score += $records[$i]{score};
 	}					
 
-	# now we want to make a list of the windows whose average score (per base) exceeds the $cutoff value
-	# this loop starts at the middle position of the first window (e.g. position 3)
-	# and loops through the middle position of the last window
-	# but will calculate the window score from 1st base to end of window (e.g. 1 to 5)
+	# now we want to make a list of the windows whose score exceeds the $cutoff value
 	my @windows = ();
 	my $high_scoring_window_count = 0;
 	
@@ -156,12 +165,9 @@ while (my $entry = $fasta->nextEntry) {
     		$windows[$high_scoring_window_count]{end}       = $i + $window_size - 1;
     		$windows[$high_scoring_window_count]{avg_score} = $avg_score;
     		$high_scoring_window_count++;		    
-#			print "$start-$end\tHigh scoring window \#$high_scoring_window_count\tavg_score per base = $avg_score\n";
- 		} else {
-#			print "$start-$end\n";
-		}
+ 		} 
 	}
-		
+	
 	################################
 	#
 	#   F i n d   P e a k s 
@@ -178,11 +184,9 @@ while (my $entry = $fasta->nextEntry) {
 
 	# loop through remaining high scoring windows  I.e. start at $i = 1 rather than 0
    	for (my $i = 1; $i < @windows; $i++ ){
-	#	print "$i) $windows[$i]{start}-$windows[$i]{end}) avg_score = $windows[$i]{avg_score}\n";
 
 		# now ask whether current window is within $gap nt of current peak
     	if ($windows[$i]{start} - $peak[$peak_counter]{end} < $gap){
-#			print "\tBEFORE: Peak $peak_counter\t$peak[$peak_counter]{start}-$peak[$peak_counter]{end} $peak[$peak_counter]{avg_score}\n";
 
 			# if window overlaps peak, then change end coordinate of current peak...
         	$peak[$peak_counter]{end} = $windows[$i]{end};
@@ -190,7 +194,6 @@ while (my $entry = $fasta->nextEntry) {
 			# also change the score of the peak by making a new average score
     	 	$peak[$peak_counter]{avg_score} = (($peak[$peak_counter]{avg_score} + $windows[$i]{avg_score}) / 2);
 
-#			print "\tAFTER:  Peak $peak_counter\t$peak[$peak_counter]{start}-$peak[$peak_counter]{end} avg_score = $peak[$peak_counter]{avg_score}\n\n";
       	} else {
 			# at this point you have defined one peak and can start looking for the next one
 			# increment peak counter and set default values of 2nd peak to be that of current window (???)
@@ -207,36 +210,34 @@ while (my $entry = $fasta->nextEntry) {
 	#
 	################################
 	
-	my $imeter2_score = 0;
 
     for (my $i = 0; $i <= $peak_counter; $i++ ){  		
     	my $peak_score = 0;
 		
-		# just skip forward if there are no peaks
+		# just skip forward if there were no peaks detected
 		next if not defined($peak[$i]{start});
-#		print "$i) $peak[$i]{start}-$peak[$i]{end}\n";
 
 	 	for (my $j = $peak[$i]{start}; $j <= $peak[$i]{end} - $wordsize +1; $j++){
 			$peak_score +=  $records[$j]{score};
        	}
 
 		# calculate a weighted score based on distance of peak
-		# should have two variables here? distance based on start or middle of peak?
-		# 1/200 could also be variable
 		# include a donor offset in case a large amount of sequence was clipped
         my $weighted_score = $peak_score * exp(-($peak[$i]{start}+$donor) * 1/$weighting_factor); 
-#		print "$i) $peak[$i]{start}-$peak[$i]{end}\tavg_score per base = $peak[$i]{avg_score}\tTotal peak score = $peak_score\tweighted score = $weighted_score\n";
 	    printf("%s\tIMEter\tpeak\t%d\t%d\t%.2f\t+\t.\t.\n", $id, $peak[$i]{start}, $peak[$i]{end}, $weighted_score) if ($gff);	     
-	    $imeter2_score += $weighted_score;
+	    $imeter_v2_score += $weighted_score;
 	}
 	
 	# with large window sizes can end up in situations where individually positive scoring
 	# windows can be connected by short regions of negative score. Can end up producing a single
 	# large negative peak. So should always set to zero if this happens.
-	$imeter2_score = 0 if ($imeter2_score < 0);
-	# print out final score
-	my $formatted_score = sprintf("%.2f",$imeter2_score);
-	print "$id\t$formatted_score\n" if (!$gff);
+	$imeter_v2_score = 0 if ($imeter_v2_score < 0);
+
+	# print out final scores
+	my $formatted_v1_score = sprintf("%.2f",$imeter_v1_score);
+	my $formatted_v2_score = sprintf("%.2f",$imeter_v2_score);
+
+	print "$id\t$formatted_v1_score\t$formatted_v2_score\n" if (!$gff);
 }
 
 close $input if ($FASTA ne '-');
@@ -266,7 +267,7 @@ sub read_imeter_parameter_file {
 	my $wordsize;
 	open(IN, $file) or die;
 	while (<IN>) {
-		next if (/^#(.+)/);
+		next if (/^#/);
 		my ($word, $score) = split;
 		$word = uc $word;
 		$model{$word} = $score;
