@@ -144,7 +144,11 @@ sub process_species{
 	# Step 1: get all the transcript details from the GFF file
 	warn "\tStep 1: processing GFF file\n" if $VERBOSE;
 
+	# one master hash that will store all data
 	my %transcripts;
+
+	# secondary hash to store transcript IDs sorted by chromosome/sequence ID (primary key)
+	my %transcripts_by_chr;
 
 	open(my $gfh, "gunzip -c $GFF |") or die;
 	while (<$gfh>) {
@@ -159,6 +163,7 @@ sub process_species{
 		next if not defined $id;
 		$transcripts{$id}{chrom} = $seq;
 		$transcripts{$id}{strand} = $str;
+		$transcripts_by_chr{$seq}{$id} = 1;
 		push @{$transcripts{$id}{$fea}}, {
 			beg => $beg,
 			end => $end,
@@ -166,20 +171,39 @@ sub process_species{
 	}
 	close $gfh;
 
+	# now we have all of the data for exons and UTRs, but these need to be sorted by
+	# chromosome position
 	foreach my $id (keys %transcripts) {
 		foreach my $feature ('exon', 'three_prime_UTR', 'five_prime_UTR') {
 			if (not defined $transcripts{$id}{$feature}) {
 				$transcripts{$id}{$feature} = [];
 			} else {
-				my @stuff = sort {$a->{beg} <=> $b->{beg}} @{$transcripts{$id}{$feature}};
+				my @stuff;
+				# need to get sorted coordinates, depends on strand
+				if ($transcripts{$id}{strand} eq '+'){
+					@stuff = sort {$a->{beg} <=> $b->{beg}} @{$transcripts{$id}{$feature}};
+				} else{
+					@stuff = sort {$b->{end} <=> $a->{end}} @{$transcripts{$id}{$feature}};
+				}
 				$transcripts{$id}{$feature} = \@stuff;
 			}
 		}
-	
-		$transcripts{$id}{tss} = $transcripts{$id}{exon}[0]{beg};
+		
+		# need to grab transcription start site coordinate
+		# some genes have exons that start before the mRNA so can't rely on mRNA
+		# being the start of the TSS, use exon instead.
+		if ($transcripts{$id}{strand} eq '+'){
+#			$transcripts{$id}{tss} = $transcripts{$id}{mRNA}[0]{beg};
+			$transcripts{$id}{tss} = $transcripts{$id}{exon}[0]{beg}
+		} else{
+#			$transcripts{$id}{tss} = $transcripts{$id}{mRNA}[0]{end};
+			$transcripts{$id}{tss} = $transcripts{$id}{exon}[0]{end}
+		}
+
 	}
 
-
+	my $num_chromosomes = keys %transcripts_by_chr;
+	warn "\t\tThere are $num_chromosomes sequences present in the genome for this species\n" if $VERBOSE;
 
 	# Step 2: create introns and cds_length attributes
 	warn "\tStep 2: creating intron information from exon data\n" if $VERBOSE;
@@ -188,13 +212,23 @@ sub process_species{
 		my @exon = @{$transcripts{$id}{exon}};
 		my @intron;
 		for (my $i = 1; $i < @exon; $i++) {
-			push @intron, {
-				beg => $exon[$i-1]{end} + 1,
-				end => $exon[$i  ]{beg} - 1,
+
+			if ($transcripts{$id}{strand} eq '+'){
+				push @intron, {
+					beg => $exon[$i-1]{end} + 1,
+					end => $exon[$i  ]{beg} - 1,
+				} 
+			} else{
+				push @intron, {
+					beg => $exon[$i  ]{end} + 1,
+					end => $exon[$i-1]{beg} - 1,
+				} 			
 			}
 		}
+		
 		$transcripts{$id}{intron} = \@intron;
-	
+				
+
 		my $cds_length;
 		foreach my $exon (@{$transcripts{$id}{CDS}}) {
 			my $len = $exon->{end} - $exon->{beg} + 1;
@@ -205,20 +239,20 @@ sub process_species{
 	}
 
 
-
+	
 	# Step 3: read fasta file to add sequence-based attributes
 	warn "\tStep 3: processing genome sequence file\n" if $VERBOSE;
-
-	# use a secondary hash to track genes that have had their sequences extracted
-	# this will get smaller as each gene is processed and this will speed things up a lot
-	my %tmp_transcripts = %transcripts;
+	
 	open(my $ffh, "gunzip -c $FASTA |") or die;
 	my $fasta = new FAlite($ffh);
 
 	while (my $entry = $fasta->nextEntry) {
-		my ($chrom) = $entry->def =~ /^>(\S+)/;
-		foreach my $id (keys %tmp_transcripts) {
-			next unless $transcripts{$id}{chrom} eq $chrom;
+		my $def = $entry->def;
+		my $seq = $entry->seq;
+		my ($chrom) = $def =~ /^>(\S+)/;
+		
+		# loop over all sequence IDs for this chromosome
+		foreach my $id (keys %{$transcripts_by_chr{$chrom}}) {
 		
 			# add sequence attributes
 			my $strand = $transcripts{$id}{strand};
@@ -240,19 +274,17 @@ sub process_species{
 				$cds_seq = reverse $cds_seq;
 			}
 			$transcripts{$id}{cds_seq} = $cds_seq;
-		
+
 			# translate
-			$transcripts{$id}{protein} = IK::translate($cds_seq);
-		
-			# can remove the gene ID from tmp_transcripts as we won't need to look at it again
-			delete $tmp_transcripts{$id};	
+			$transcripts{$id}{protein} = IK::translate($cds_seq);		
 		}
 	}
 	close $ffh;
 
 
+
 	# Step 4: identify error conditions
-	warn "\tStep 4: looking for errors in annotations\n" if $VERBOSE;
+	warn "\tStep 5: looking for errors in annotations\n" if $VERBOSE;
 
 	my %canonical = (
 		"GT..AG" => 1,
@@ -314,7 +346,7 @@ sub process_species{
 
 
 	# Step 5: extract relevant info from annotation file
-	warn "\tStep 5: extracting extra information from Phytozome annotation file\n" if $VERBOSE;
+	warn "\tStep 6: extracting extra information from Phytozome annotation file\n" if $VERBOSE;
 
 	open(my $afh, "gunzip -c $ANNOTATION |") or die;
 	while (<$afh>) {
@@ -351,7 +383,7 @@ sub process_species{
 
 
 	# Step 6: the big table
-	warn "\tStep 6: final output\n" if $VERBOSE;
+	warn "\tStep 7: final output\n" if $VERBOSE;
 
 	foreach my $type (qw(exon intron five_prime_UTR three_prime_UTR)) {
 		# need counter for FASTA header
@@ -369,6 +401,7 @@ sub process_species{
 			next if ($transcripts{$id}{error});
 
 			my $tss = $transcripts{$id}{tss};
+			my $strand = $transcripts{$id}{strand};
 			my $ftotal = @{$transcripts{$id}{$type}};
 
 			for (my $i = 0; $i < @{$transcripts{$id}{$type}}; $i++) {
@@ -397,8 +430,22 @@ sub process_species{
 
 				$n++;
 				my $tidied_seq = tidy_seq($f->{seq});
-				my $beg = $f->{beg} + 1 - $tss;
-				my $end = $f->{end} + 1 - $tss;
+
+
+				# get coordinates relative to TSS (depends on strand)
+				my ($beg, $end);
+				if ($transcripts{$id}{strand} eq '+') {
+					$beg = $f->{beg} + 1 - $tss;
+					$end = $f->{end} + 1 - $tss;
+				} else{
+					$beg = $tss - $f->{end} + 1;
+					$end = $tss - $f->{beg} + 1;
+				}
+
+				if ($beg < 1 or $end < 1){
+					die "ERROR: $id $type $strand $tss $f->{beg}-$f->{end}\n";
+				}
+
 				my $position = $i + 1;
 
 
@@ -487,6 +534,7 @@ sub extract_seq {
 	
 	my $seq = substr($entry->{SEQ}, $feature->{beg} -1,
 		$feature->{end} - $feature->{beg} + 1);
+
 	if ($strand eq '-') {
 		$seq =~ tr[ACGTRYMKWSBDHV]
 		          [TGCAYRKMWSVHDB];
@@ -534,19 +582,3 @@ __END__
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-####################################
-#
-# SUBROUTINES
-#
-####################################

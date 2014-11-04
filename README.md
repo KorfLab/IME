@@ -91,6 +91,7 @@ Verbose mode (-v) will give you information about the scripts's progress. E.g.
 	proc_phytozome.pl -v /Volumes/Scratch/Phytozome/v9.0/
 	Processing data for Acoerulea
 		Step 1: processing GFF file
+			There are 275 sequences present in the genome for this species
 		Step 2: creating intron information from exon data
 		Step 3: processing genome sequence file
 		Step 4: looking for errors in annotations
@@ -104,7 +105,7 @@ May want to skip some problem species by using the -i option:
 	proc_phytozome.pl -v -i "Mdomestica Pvirgatum Rcommunis" /Volumes/Scratch/Phytozome/v9.0/
 	
 Any species matching the text in the space-separated list (provided by -i option) will
-be skipped. Some species with very large number of sequences in their genomes take a long
+be skipped. Some species with very large number of sequences in their genomes may take a long
 time to process.
 
 
@@ -179,22 +180,57 @@ parameter file is required by the main IMEter script.
 
 ## Generating many parameter files ##
 
+I used a simple Perl wrapper script to just call ime_trainer.pl many times:
+
+	#!/usr/bin/perl
+	use strict;
+	use warnings FATAL => 'all';
+
+	foreach my $file (glob("*_IME_intron.fa")){
+		my $outfile = $file;
+		$outfile =~ s/fa$/params/;
+		my $command = "ime_trainer.pl -k 5 -p 400 -d 400 -c $file > $outfile";
+		print "Running $command\n";
+		system($command) && die "Can't run $command\n";
+	}
+
+
+
+
+## Exploring parameter space ##
+
 If you want to try lots of different parameter combinations, you can use the 
 ime_explore_parameter_space.pl script. This is a wrapper script around the ime_trainer.pl
 script and changes several of the parameters in a set of nested loops. For each final
-combination of parameters, it runs ime_trainer.pl and produces an output file.
+combination of parameters, it runs ime_trainer.pl and produces an output parameter file.
 
 It then runs the main imeter.pl script (see below) using that parameter file to score a set 
 of wild-type Arabidopsis intron sequences for which we know (experimentally) how much they
 increase expression (relative to an intronless control). E.g.
 
-	ime_explore_parameter_space.pl Athaliana_IME_intron.fa db_IME_all_WT_introns.fa final_IME_scores_all_WT.tsv
+	ime_explore_parameter_space.pl Athaliana_IME_intron.fa db_IME_Rose_WT_introns.fa final_IME_scores.tsv
 	
-+ The first argument is the input data to train from.
-+ The second argument is the file of 15 introns for which we know how much the intron
-increases expression (if at all)
++ The first argument is the input intron sequence data to train from.
++ The second argument is a file of 15 wild-type introns for which we know how much the intron
+increases expression (if at all).
 + The third argument is the name of a final output file in which to put the IMEter scores
 for all introns in the test file, under all parameter combinations.
+
+By default, the file will test various sizes of k (3–7), different distances from the TSS,
+use of partial or complete gene structures, and whether all splice isoforms of a gene 
+are included in training, or just the primary isoform. It is expected that you would 
+change the script to add/remove parameters as desired. In particular, change this line:
+
+	foreach my $distance_metric (qw(position14 position15 coordinate200_400 coordinate300_300 coordinate400_400)){
+
+The defaults are that it will test 1st vs 4th introns, 1st vs 5th, and introns that
+start before 200, 300, or 400 bp from the TSS against introns that start after 400, 300, 
+or 400 bp from the TSS.
+
+The output file can be opened with Excel or R and subjected to correlation analysis to see
+which parameter sets best explain the known levels of expression increase (which are stored
+in the FASTA headers of the db_IME_Rose_WT_introns.fa file).
+
 
 
 ## Running the IMEter ##
@@ -217,7 +253,7 @@ There are many options to further change how the IMEter scores a sequence:
 	  -r           calculate score for reverse strand
   	  -p           A file of IMEter scores at each percentile (to include in output)
   	  -o		   print GFF info of each peak
-	  
+	  -i <pattern> Ignore any kmers from the scoring process if they match pattern
 	  
 	  
 	  
@@ -299,3 +335,18 @@ all intron scores.
 + Note, this file does not show the absolute highest score observed. 
 + These files can be included as an argument to the imeter.pl script (with the -p) option
 to include this information as an extra column in the IMEter output.
+
+
+# Getting data from Phytozome v10.0.4
+
+1. First [set up Globus](http://genome.jgi.doe.gov/help/download.jsf#globus) account as per instructions.
+2. Set up your Mac/PC to have an endpoint
+3. Using Globus web interface, make a connection between endpoints
+	4. Target 1: jgi#portal
+	5. Path 1: By_Organism_Name/P/PhytozomeV10_[PhytozomeV10]/ 
+	5. Target 2: kbradnam#bioinformatics
+	6. Path 2: /Volumes/Phytozome/v10.0.4
+	7. Give transfer a name (no periods), e.g. v_10_0_4_transfer
+	8. Start transfer and wait
+
+

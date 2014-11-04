@@ -63,8 +63,7 @@ foreach my $file (@ARGV) {
 		my $seq = $entry->seq;
 	
 		# parse fasta header
-		my ($uid, $type, $pos, $coor, $id1, $id2, $iso, $strct)
-			= split(/\s/, $entry->def);
+		my ($uid, $type, $pos, $coor, $id1, $id2, $iso, $strct) = split(/\s/, $entry->def);
 		($type) = $type =~ /TYPE=(\S+)/;
 		($pos) = $pos =~ /POS=(\d+)/;
 		my ($beg, $end) = $coor =~ /COORDS=(\d+)\-(\d+)/;
@@ -81,9 +80,15 @@ foreach my $file (@ARGV) {
 			$log{skipped_secondary}{$id1}++;
 			next;
 		}
-		
+
 		# classify intron
 		my $class;
+		
+		# fix to skip CG rich regions in first 250 bp
+#		if ($beg <= 300){
+#			$class = 'not_counted';
+#		}
+		
 		if ($opt_p and $beg <= $opt_p) {
 			$class = 'proximal';
 		} elsif ($opt_P and $pos <= $opt_P) {
