@@ -165,7 +165,7 @@ for (my $k = 4; $k <= 7; $k++){
 		}	
 	}
 }
-exit;
+
 # now we have all scores in separate files, we can combine them into one main table
 
 # how many introns were there in test file?
