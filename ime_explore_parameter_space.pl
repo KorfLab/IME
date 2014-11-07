@@ -52,6 +52,7 @@ push @distance_metrics, qw(position23 position34 position45);
 
 # absolute distances for -p and -d parameters
 push @distance_metrics, qw(coordinate100_400 coordinate200_400 coordinate300_400 coordinate400_400);
+push @distance_metrics, qw(coordinate125_450 coordinate125_500 coordinate125_550);
 push @distance_metrics, qw(coordinate100_600 coordinate200_600 coordinate300_600 coordinate400_600 coordinate500_600 coordinate600_600);
 push @distance_metrics, qw(coordinate100_800 coordinate300_800 coordinate500_800 coordinate700_800);
 
@@ -71,7 +72,7 @@ my %correlations;
 
 
 # vary size of k used for kmer counting
-for (my $k = 4; $k <= 7; $k++){
+for (my $k = 4; $k <= 6; $k++){
 
 	# just some examples of distance parameters that could be used. Substitute your own here
 	# if using coordinate system with 2 numbers, these will be used for values of -p and -d
@@ -195,8 +196,9 @@ open(my $out, ">", $outfile) or die "Can't write to $outfile\n";
 foreach my $correlation (sort {$correlations{$a} <=> $correlations{$b}} keys %correlations){
 	print $out "$correlation\t$correlations{$correlation}\n";
 }
-clolse($out);
+close($out);
 
+exit(0);
 
 
 ####################################
@@ -270,49 +272,3 @@ sub read_expression_data{
 # now we have all scores in separate files, we can combine them into one main table
 
 exit(0);
-
-__END__
-# how many introns were there in test file?
-my $intron_count = `grep -c \">\" $test_seq_file`; chomp $intron_count;
-
-my @ime_score_files = glob("*.scores");
-
-# hash to store data
-my %scores;
-
-foreach my $file (@ime_score_files){
-	warn "Processing $file\n";
-	my $key = $file;
-	$key =~ s/\.scores//;
-	
-	open(my $in, "<", $file) or die "Can't read $file\n";
-	
-	while(<$in>){
-		chomp;
-		my ($intron, $score_v1, $score_v2) = split;
-#		print "Intron $intron has an IMEter v2.0 score of $score_v2\n";
-		push(@{$scores{$key}}, $score_v2);
-	}
-	close($in);
-}
-
-# now print table
-
-open(my $out, ">", $table_filename) or die "can't write to $table_filename\n";
-# first print header row
-foreach my $key (sort keys %scores){
-	print $out "$key\t";
-}
-print $out "\n";
-
-# now print remaining rows
-
-for (my $i=0; $i < $intron_count; $i++){
-	foreach my $key (sort keys %scores){
-		print $out "${$scores{$key}}[$i]\t";
-	}
-	print $out "\n";
-}
-close($out);
-
-
