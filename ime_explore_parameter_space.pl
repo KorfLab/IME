@@ -38,94 +38,126 @@ params:
 my ($intron_file, $test_seq_file, $table_filename)  = @ARGV;
 
 my $script1 = "ime_trainer.pl";
-#my $script2 = "the_imeter.pl";
 my $script2 = "imeter.pl";
 
 print "\n\n";
 
+# set up list of various distance metrics that we can test
+my @distance_metrics;
+
+# integer positions for introns
+push @distance_metrics, qw(position12 position13 position14 position15 position16 position17);
+
+# absolute distances for -p and -d parameters
+push @distance_metrics, qw(coordinate200_400 coordinate300_300 coordinate400_400);
+
+# include offset for -q option to exclude introns very close to TSS
+push @distance_metrics, qw(coordinate100_200_400 coordinate150_300_300 coordinate100_400_400);
+
+
 # vary size of k used for kmer counting
-for (my $k = 3; $k < 8; $k++){
+for (my $k = 4; $k <= 7; $k++){
 
 	# just some examples of distance parameters that could be used. Substitute your own here
-	foreach my $distance_metric (qw(position14 position15 coordinate200_400 coordinate300_300 coordinate400_400)){
-
+	# if using coordinate system with 2 numbers, these will be used for values of -p and -d
+	# if using coordinate system with *3* numbers, these will be used for values of -q, -p and -d 
+	# where -q must be less than -p
+	foreach my $distance_metric (@distance_metrics){
+	
 		# require complete or partial gene structures 
 		foreach my $structure (qw(complete partial)){
 
 			# only use primary splice isoform, or use all isoforms (secondary)
 			foreach my $isoform (qw(primary secondary)){
 
-				print "Parameters: k=$k distance_method=$distance_metric ";
-				print "structure_requirement=$structure isoforms=$isoform\n";
-				print "----------------------------------------------------------------------------------\n";
+				# finally want a way of using or not using -x option for clipping intron sequences
+				foreach my $x_option (qw(yes no)){
 				
-				my $command = "$script1 -k $k ";
-				my $out_file = "Ath_IME_k$k";
-				if($distance_metric =~ m/coordinate\d+_\d+/){
-					my ($p, $d) = $distance_metric =~ m/(\d+)_(\d+)/;
-					$command .= "-p $p -d $d ";
-					$out_file .= "_coords${p}_$d";
-				} 				
-				elsif($distance_metric =~ m/position\d\d/){
-					my ($p, $d) = $distance_metric =~ m/position(\d)(\d)/;
-					$command .= "-P $p -D $d ";
-					$out_file .= "_position${p}$d";						
-				} else{
-					die "error: $distance_metric";
-				}
+					
+					print "Parameters: k=$k distance_method=$distance_metric ";
+					print "structure_requirement=$structure isoforms=$isoform x_option = $x_option\n";
+					print "----------------------------------------------------------------------------------\n";
+				
+					my $command = "$script1 -k $k ";
+					my $out_file = "Ath_IME_k$k";
+					if($distance_metric =~ m/coordinate\d+_\d+_\d+/){
+						my ($q, $p, $d) = $distance_metric =~ m/(\d+)_(\d+)_(\d+)/;
+						$command .= "-q $q -p $p -d $d ";
+						$out_file .= "_coords${q}_${p}_$d";
+					} 				
 
-				if($structure eq "complete"){
-					$command .= "-c ";
-					$out_file .= "_complete";
-				} else{
-					$out_file .= "_incomplete";				
-				}
+					elsif($distance_metric =~ m/coordinate\d+_\d+/){
+						my ($p, $d) = $distance_metric =~ m/(\d+)_(\d+)/;
+						$command .= "-p $p -d $d ";
+						$out_file .= "_coords0_${p}_$d";
+					} 				
+					elsif($distance_metric =~ m/position\d\d/){
+						my ($p, $d) = $distance_metric =~ m/position(\d)(\d)/;
+						$command .= "-P $p -D $d ";
+						$out_file .= "_position${p}$d";						
+					} else{
+						die "error: $distance_metric";
+					}
 
-				if($isoform eq "primary"){
-					$command .= "-i ";
-					$out_file .= "_primary";
-				} else{
-					$out_file .= "_secondary";				
-				}
+					if($structure eq "complete"){
+						$command .= "-c ";
+						$out_file .= "_complete";
+					} else{
+						$out_file .= "_incomplete";				
+					}
+
+					if($isoform eq "primary"){
+						$command .= "-i ";
+						$out_file .= "_primary";
+					} else{
+						$out_file .= "_secondary";				
+					}
+
+					# only use x-option with some of the distance parameters
+					if($x_option eq "yes" and $distance_metric =~ m/coordinate/){
+						$command .= "-x ";
+						$out_file .= "_x";
+					} 
 								
-				$out_file .= ".params";
+					$out_file .= ".params";
 
-				$command .= "$intron_file > $out_file";
+					$command .= "$intron_file > $out_file";
 				
-				# can now run command to train IMEter with some particular set of
-				# parameters. Don't run if param file already exists.
-				if (-e $out_file){
-					warn "$out_file already exists, skipping...\n";
-				} else{
-					warn "Running: $command\n\n";
-					system($command) && die "Can't run $command\n";				
+					# can now run command to train IMEter with some particular set of
+					# parameters. Don't run if param file already exists.
+					if (-e $out_file){
+						warn "$out_file already exists, skipping...\n";
+					} else{
+						warn "Running: $command\n\n";
+						system($command) && die "Can't run $command\n";				
+					}
+				
+				
+					# now run actual IMEter script to score the test set of introns
+					# using supplied parameter file
+					my $out_file_2 = $out_file;
+
+					$out_file_2 =~ s/\.params//;
+					$out_file_2 .= ".scores";
+				
+					$command = "$script2 -m $out_file $test_seq_file > $out_file_2";
+
+					if(-e $out_file_2){
+						warn "$out_file_2 already exists, skipping...\n";
+					} else{
+						warn "Running: $command\n";	
+						system("echo \"Intron\t$out_file\" >> $out_file_2") && die "Can't echo";
+						system($command) && die "Can't run $command\n";				
+
+					}
+
+					print "\n\n";
 				}
-				
-				
-				# now run actual IMEter script to score the test set of introns
-				# using supplied parameter file
-				my $out_file_2 = $out_file;
-
-				$out_file_2 =~ s/\.params//;
-				$out_file_2 .= ".scores";
-				
-				$command = "$script2 -m $out_file $test_seq_file > $out_file_2";
-
-				if(-e $out_file_2){
-					warn "$out_file_2 already exists, skipping...\n";
-				} else{
-					warn "Running: $command\n";	
-					system("echo \"Intron\t$out_file\" >> $out_file_2") && die "Can't echo";
-					system($command) && die "Can't run $command\n";				
-
-				}
-
-				print "\n\n";
 			}
 		}	
 	}
 }
-
+exit;
 # now we have all scores in separate files, we can combine them into one main table
 
 # how many introns were there in test file?

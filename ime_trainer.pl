@@ -18,17 +18,18 @@
 use strict;
 use warnings 'FATAL' => 'all';
 use Getopt::Std;
-use vars qw($opt_h $opt_p $opt_d $opt_P $opt_D $opt_k $opt_c $opt_i $opt_1 $opt_3 $opt_v);
+use vars qw($opt_h $opt_p $opt_q $opt_d $opt_P $opt_D $opt_k $opt_c $opt_i $opt_1 $opt_v $opt_x);
 use FAlite;
 
 my $cmdline = "$0 @ARGV";
 
-getopts('hp:d:P:D:k:ci13v');
+getopts('hp:d:q:P:D:k:ci1vx');
 
 die "
 usage: ime_trainer.pl [params] <fasta file(s) with meta-data>
 params:
-  -p <int> proximal cutoff using nt coordinates
+  -p <int> proximal start cutoff using nt coordinates
+  -q <int> proximal end cutoff using nt coordinates
   -d <int> distal cutoff using nt coordinates
   -P <int> proximal cutoff using intron position
   -D <int> distal cutoff using intron position
@@ -36,30 +37,47 @@ params:
   -c       require complete genes
   -i       require primary isoform
   -1       IMEter 1 style training
-  -3       IMEter 3 style training (decay)
+  -x       Exclude regions of introns that span -q and -p cutoff values
+           i.e. if using -q, can use some sequence of introns which start before -q value
+           but end after it. Likewise, for -p, can trim introns that start before value
+           of -p but end after it.
   -v       verify only, do not produce output file
 " if @ARGV == 0 or $opt_h;
 
 my @file = @ARGV;
 
+# check command-line options
 die "-k is required\n" unless $opt_k;
 my $cutoffs_ok;
-if    ($opt_p and $opt_d) {$cutoffs_ok = 1}
-elsif ($opt_P and $opt_D) {$cutoffs_ok = 1}
-else                      {die "pairs of -p and -d or -P and -D required\n"}
+if (($opt_p or $opt_d) and ($opt_P or $opt_D)) {
+	die "Use either -p and -d or -P and -D but do not mix the two\n";
+} elsif ($opt_p and not $opt_d){
+	die "-p option must be paired with -d option (and optionally -q)\n";
+} elsif ($opt_P and not $opt_D){
+	die "-P option must be paired with -D option\n";
+} elsif (not $opt_p and not $opt_P){
+	die "Must specify -p and -d (and optionally -q), or -P and -D options\n";
+} elsif ($opt_q and $opt_P){
+	die "-q option should only be used with -p option\n";
+} elsif ($opt_x and $opt_P){
+	die "-x option should only be used with -p/-q options\n";
+} else {warn "Options look good\n"}
 
-die "IMEter 3-style training not yet supported\n" if $opt_3;
 
 # main loop
 
 my %count;
+
+# will have various log statistics, set a couple of them to zero
 my %log;
+$log{not_counted} = 0;
+
 my %transcript_count;
 
 foreach my $file (@ARGV) {
 	open(my $fh, $file) or die;
 	my $fasta = new FAlite($fh);
-	while (my $entry = $fasta->nextEntry) {
+	SEQ: while (my $entry = $fasta->nextEntry) {
 		my $seq = $entry->seq;
 	
 		# parse fasta header
@@ -84,12 +102,16 @@ foreach my $file (@ARGV) {
 		# classify intron
 		my $class;
 		
-		# fix to skip CG rich regions in first 250 bp
-#		if ($beg <= 300){
-#			$class = 'not_counted';
-#		}
-		
-		if ($opt_p and $beg <= $opt_p) {
+		# -q option to skip CG-rich regions in first part of transcript
+		# and other dinucleotide biases, will handle this slightly differently
+		# if using -x option later
+		if ($opt_q and $beg <= $opt_q and not $opt_x){
+			$class = 'not_counted';
+		} elsif ($opt_q and $opt_x and ($end <= $opt_q)){
+			# we can exclude some introns when using -q and -x if they end before
+			# the value of -q, otherwise we will be counting at least part of the intron
+			$class = 'not_counted';
+		} elsif ($opt_p and $beg <= $opt_p) {
 			$class = 'proximal';
 		} elsif ($opt_P and $pos <= $opt_P) {
 			$class = 'proximal';
@@ -100,12 +122,36 @@ foreach my $file (@ARGV) {
 		} else {
 			$class = 'not_counted';
 		}
+
+		# keep track of how many introns we have seen in total
+		$log{intron}++;
+
+		# keep track of how many introns in each class
 		$log{$class}++;
 		
-		# count intron
-		$log{intron}++;
-		for (my $i = 0; $i < length($seq) - $opt_k + 1; $i++) {
+		# now want to count kmers in introns, but no real need to proceed if
+		# $class isn't proximal or distal at this point (this means we don't
+		# count non-ACGT kmers from uncounted introns)
+		next SEQ unless ($class eq 'proximal' or $class eq 'distal');
+		
+		# now count kmers in our proximal or distal introns
+		KMER: for (my $i = 0; $i < length($seq) - $opt_k + 1; $i++) {
+
+			# if we are using -x option with -q, then we only want to look
+			# at kmers that start *after* we pass the value of -q
+			next KMER if ($class eq 'proximal' and $opt_q and $opt_x and ($i < $opt_q));
+
+
+			# if we are using -x option with -p, then we only want to look
+			# at kmers in intron up to the distance specified by -p. Can just ignore
+			# any sequence after that point
+			my $distance_from_TSS = $i + $beg;
+			next SEQ if ($class eq 'proximal' and $opt_x and ($distance_from_TSS > $opt_p));
+
+			
+			# can now grab kmers and start counting
 			my $kmer = substr($seq, $i, $opt_k);
+
 			if ($kmer =~ /^[ACGT]+$/) {
  				$count{$kmer}{$class}++;
 			} else {
@@ -125,21 +171,24 @@ print "# ----------------\n";
 print "#\n";
 print "# ", `date`;
 print "# build: $cmdline\n";
-
-print "# transcripts:               ", scalar keys %transcript_count, "\n";
-print "# transcripts not counted:   ", scalar keys %{$log{skipped_incomplete}}, "\n";
-
+print "#\n";
+print "# transcripts:         ", scalar keys %transcript_count, "\n";
+print "# incomplete:          ", scalar keys %{$log{skipped_incomplete}}, "\n";
+print "# secondary isoforms:  ", scalar keys %{$log{skipped_secondary}}, "\n";
+print "#\n";
 print "# introns counted:     ", $log{intron}, "\n";
-print "# introns not counted: ", scalar keys %{$log{skipped_secondary}}, "\n";
-
+print "# introns exluded:     ", $log{not_counted}, "\n";
+print "#\n";
 print "# proximal introns:    ", $log{proximal}, "\n";
 print "# distal introns:      ", $log{distal}, "\n";
-
+print "#\n";
 print "# skipped kmers:       ";
 my ($kerr) = sort {$log{skipped_kmer}{$b} <=> $log{skipped_kmer}{$a}} keys %{$log{skipped_kmer}};
 if ($kerr) {
 	print scalar keys %{$log{skipped_kmer}}, " maximum = ",
 		"$kerr ($log{skipped_kmer}{$kerr})\n";
+} else{
+	print "0\n";
 }
 my $low_counts;
 foreach my $kmer (keys %count) {

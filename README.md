@@ -137,12 +137,7 @@ We trained the latest version of the IMEter like so:
 
 	ime_trainer.pl -k 5 -p 400 -d 400 -c Athaliana_IME_intron.fa > Ath_IME_k5_400_400_complete.params
 
-The first three parameters (k = 5, proximal and distal cutoff = 400 nt from TSS) were the
-same as used in the last published version of the IMEter. Previously we used data from 
-TAIR and slightly different filtering criteria. Here, the -c option restricts the script to
-only train from transcripts with 5' and 3' UTRs. The lack of the -i option means that
-we are not relying on just the primary isoform. If a gene has multiple transcripts, all our
-used to train the IMEter:
+The first three parameters (k = 5, proximal and distal cutoff = 400 nt from TSS) were the same as used in the last published version of the IMEter. Previously we used data from  TAIR and slightly different filtering criteria. Here, the -c option restricts the script to only train from transcripts with 5' and 3' UTRs. The lack of the -i option means that we are not relying on just the primary isoform. If a gene has multiple transcripts, all our used to train the IMEter:
 
 
 The final parameter file will look something like this:
@@ -182,6 +177,7 @@ parameter file is required by the main IMEter script.
 
 I used a simple Perl wrapper script to just call ime_trainer.pl many times:
 
+```perl
 	#!/usr/bin/perl
 	use strict;
 	use warnings FATAL => 'all';
@@ -193,7 +189,7 @@ I used a simple Perl wrapper script to just call ime_trainer.pl many times:
 		print "Running $command\n";
 		system($command) && die "Can't run $command\n";
 	}
-
+```
 
 
 
@@ -349,4 +345,252 @@ to include this information as an extra column in the IMEter output.
 	7. Give transfer a name (no periods), e.g. v_10_0_4_transfer
 	8. Start transfer and wait
 
+
+
+# Average intron length per species #
+
+Wrote quick little script to process all of the *IME_intron.fa files to calculate mean intron length:
+
+```bash
+./mean.pl *_IME_intron.fa > mean_lengths.tsv
+cat mean_lengths.tsv
+Acoerulea       208945  467.4
+Alyrata 77360   196.8
+Athaliana       166960  163.9
+Bdistachyon     135503  387.5
+Brapa   162127  206.7
+Cclementina     149331  350.3
+Cpapaya 76379   453.6
+Creinhardtii    149208  269.7
+Crubella        110086  174.9
+Csativus        139693  452.4
+Csinensis       197920  352.3
+Csubellipsoidea_C-169   62478   284.1
+Egrandis        186570  439.3
+Fvesca  128426  413.7
+Gmax    330915  492.3
+Graimondii      404366  352.5
+Lusitatissimum  169894  242.2
+Mesculenta      123412  420.5
+Mguttatus_v1.1  107829  285.3
+Mpusilla_CCMP1545       7992    189.0
+Mpusilla_RCC299 4459    160.7
+Mtruncatula     135596  437.2
+Olucimarinus    1910    171.8
+Osativa 167200  410.0
+Ppatens 150985  275.1
+Ppersica        99942   326.4
+Ptrichocarpa    346711  382.2
+Pvulgaris       145176  480.0
+Sbicolor        109431  412.6
+Sitalica        142458  338.6
+Slycopersicum   113855  536.9
+Smoellendorffii 76214   101.7
+Stuberosum      133500  577.7
+Tcacao  173226  485.0
+Thalophila      126919  178.4
+Vcarteri        81353   411.8
+Vvinifera       114501  725.7
+Zmays   187657  487.0
+
+```
+
+
+# Testing effect of excluding first region of transcript from IMEter training #
+
+Modified ime_trainer.pl to accept a new -q option. This is used in conjuction with -p (proximal option). This new option allows an initial offset to be specified (in bp). Regions of introns that start anywhere between 1 bp from TSS up to the value provided by -q will be excluded. E.g. if -q is set to 100 and a 200 bp intron starts at 75 bp from the TSS, then kmers from the first 25 bp of the intron will not be included in the proximal data set.
+
+Also trying a new -x option to exclude sequence from proximal introns that occur past the position specified by -p. E.g. if we set -p to 400, then by default we classify a 200 bp intron that starts at position 390 from the TSS as proximal, even though only 10 bp of the intron occurs in that range. The -x option just excludes all bases past the value of -p.
+
+Now let's see what difference this makes as we increase -q (for A. thaliana). First
+no value at all (just showing some of the parameter file, with only the top 10 kmers):
+
+```bash
+# build: ./ime_trainer.pl -k 5 -p 400 -d 400 -c Athaliana_IME_intron.fa
+# introns counted:     138144
+# bases clipped:       0
+# proximal introns:    15353
+# distal introns:      122791
+CGCCG	1.22953648512629
+CGATC	1.05461245354295
+CGATT	1.03625398431636
+CGGCG	0.982759636835548
+TCGAT	0.964288118654301
+TCCGA	0.892261809503596
+TCGCG	0.890909071438347
+GATCG	0.872558511203674
+TAGGG	0.867923670376819
+GGGTT	0.861602930056838
+```
+
+Now try -q = 50 (without -x):
+
+```bash
+# build: ./ime_trainer.pl -k 5 -p 400 -d 400 -c -q 50 Athaliana_IME_intron.fa
+# introns counted:     138144
+# bases clipped:       0
+# proximal introns:    15353
+# distal introns:      122791
+CGCCG	1.06322721405146
+GGGTT	0.977503611146258
+TAGGG	0.952333887461336
+AGGGT	0.927545796090563
+GATCG	0.9193202969594
+CGATT	0.914550077442204
+CGGCG	0.883751912446206
+CGACG	0.858184508444106
+CGATC	0.837855159370795
+CTGGG	0.831612794751938
+```
+
+This changes some of the top kmers that appear (and we see the non-CG-kmers: GGGTT, TAGGG, and AGGGT). Now we add the -x option into the mix (without -q):
+
+```bash
+# build: ./ime_trainer.pl -k 5 -p 400 -d 400 -c -x Athaliana_IME_intron.fa
+# introns counted:     138144
+# bases clipped:       1698391
+# proximal introns:    15353
+# distal introns:      122791
+CGCCG	1.60524841755586
+CGATC	1.59753071910004
+CGATT	1.49984536467771
+CGGCG	1.42480019742612
+TCGAT	1.41630270342777
+TCGCG	1.37613923833504
+TCCGA	1.35693456044754
+CGCGA	1.33072771219721
+CCGAT	1.29872260925767
+CTCCG	1.2769067957431
+
+```bash
+
+Addition of -x option increases log-odds scores quite a lot and changes the top 10 kmers again. So how does -q 50 and -x look:
+
+```bash
+# build: ./ime_trainer.pl -k 5 -p 400 -d 400 -c -q 50 -x Athaliana_IME_intron.fa
+# introns counted:     138144
+# bases clipped:       1698391
+# proximal introns:    15353
+# distal introns:      122791
+CGATT	1.55043311963481
+CGCCG	1.52927608597663
+CGATC	1.52721337339612
+GATCG	1.52563512967403
+TCGCG	1.48513682662658
+CGGCG	1.48287996440789
+CGCGA	1.48097976431641
+TCGAT	1.42604652272866
+GGGTT	1.38024903705267
+CTGGG	1.33097685014413
+
+```bash
+
+Try to see how -q and -x look along side the default results
+
+```bash
+Position	Kmer	Default score		With -q=50 and -x
+#1			CGCCG	1.22953648512629	1.52927608597663 #2
+#2			CGATC	1.05461245354295	1.52721337339612 #3
+#3			CGATT	1.03625398431636	1.55043311963481 #1
+#4			CGGCG	0.982759636835548	1.48287996440789 #6
+#5			TCGAT	0.964288118654301	1.42604652272866 #8
+#6			TCCGA	0.892261809503596
+#7			TCGCG	0.890909071438347	1.48513682662658 #5
+#8			GATCG	0.872558511203674	1.52563512967403 #4
+#9			TAGGG	0.867923670376819
+#10			GGGTT	0.861602930056838	1.38024903705267 #9
+			CGCGA						1.48097976431641 #7
+			CTGGG						1.33097685014413 #10
+
+```
+
+So changing the training program in this way generally boosts all log odds scores, but in relative terms it reduces the extra boost that was given to CGCCG. It also makes CGATT the highest kmer.
+
+Now redo all of this with -q = 100. Will skip to the headline comparison:
+
+```bash
+Position	Kmer	Default score		With -q=100 and -x
+#1			CGCCG	1.22953648512629	1.60986472320887 #1
+#2			CGATC	1.05461245354295	
+#3			CGATT	1.03625398431636	1.46511447708335 #7
+#4			CGGCG	0.982759636835548	1.42560435903824 #10
+#5			TCGAT	0.964288118654301	
+#6			TCCGA	0.892261809503596
+#7			TCGCG	0.890909071438347	1.4331938769954  #8
+#8			GATCG	0.872558511203674	1.54163035481501 #2
+#9			TAGGG	0.867923670376819	1.50126320812673 #4
+#10			GGGTT	0.861602930056838	1.42600510249279 #9
+			CGCGA						1.53087160432573 #3
+			CGACG						1.48728417779348 #5
+			AGGGT						1.47154824508    #6
+```
+
+So with -q at 100 bp, this makes more drastic changes compared to the old default values. What about -q=150?
+
+```bash
+Position	Kmer	Default score		With -q=150 and -x
+#1			CGCCG	1.22953648512629	
+#2			CGATC	1.05461245354295	1.35676232597733 #9
+#3			CGATT	1.03625398431636	1.35395792474312 #10
+#4			CGGCG	0.982759636835548	1.44595258982649 #4
+#5			TCGAT	0.964288118654301	
+#6			TCCGA	0.892261809503596
+#7			TCGCG	0.890909071438347	1.38560982568778 #7
+#8			GATCG	0.872558511203674	1.399509085695   #5
+#9			TAGGG	0.867923670376819	1.46102377834578 #3
+#10			GGGTT	0.861602930056838	
+			CGCGA						1.61491451043138 #1
+			CGACG						1.57132708389913 #2
+			TTCGA						1.39159401248468 #6
+			TCGAA						1.38258112063352 #8
+```
+
+
+Some of these kmers seems to dance up and down the list as you change the value of q. Now the only thing to do is to see whether any of these parameter options do a better job of explaining known variation in expression enhancing abilities of introns that we have tested. Will make 7 parameter files:
+
+```bash
+./ime_trainer.pl -k 5 -p 400 -d 400 -c  Athaliana_IME_intron.fa  > At.params
+./ime_trainer.pl -k 5 -p 400 -d 400 -c  -q 150 -x Athaliana_IME_intron.fa  > At_q150_x.params
+./ime_trainer.pl -k 5 -p 400 -d 400 -c  -q 100 -x Athaliana_IME_intron.fa  > At_q100_x.params
+./ime_trainer.pl -k 5 -p 400 -d 400 -c  -q 50 -x Athaliana_IME_intron.fa  > At_q50_x.params
+./ime_trainer.pl -k 5 -p 400 -d 400 -c  -q 50  Athaliana_IME_intron.fa  > At_q50.params
+./ime_trainer.pl -k 5 -p 400 -d 400 -c  -q 100  Athaliana_IME_intron.fa  > At_q100.params
+./ime_trainer.pl -k 5 -p 400 -d 400 -c  -q 150  Athaliana_IME_intron.fa  > At_q150.params
+```
+
+Now for each of these parameter files we will run the IMEter aginst the test set of 15 wildtype introns:
+
+```bash
+./imeter.pl -m At_q150.params db_IME_Rose_WT_introns.fa
+```
+
+After some experimentation, q=125 without -x option, and without implicit clipping with -q option, gives better results (as determined by final correlation):
+
+```bash
+Position	Kmer	Default score		With -q=125
+#1			CGCCG	1.22953648512629	1.06633217188795 #1
+#2			CGATC	1.05461245354295	0.876360044391628 #3
+#3			CGATT	1.03625398431636	0.883135549901786 #2
+#4			CGGCG	0.982759636835548	0.791173522227393 #8
+#5			TCGAT	0.964288118654301	0.805111240054373 #6
+#6			TCCGA	0.892261809503596	0.738486076412956 #12
+#7			TCGCG	0.890909071438347	0.859387867265468 #4
+#8			GATCG	0.872558511203674	0.719652200853388 #15
+#9			TAGGG	0.867923670376819	0.794060471074419 #7
+#10			GGGTT	0.861602930056838	0.819760174260988 #5
+#11 		TTCGA   0.853614225351389	0.747575198743333 #10
+#12			CGCGA   0.847351833937376	0.784740501033 #9
+#13			CGTCG   0.830087669049207
+#14			CGACG   0.829707674657411
+#15			AGGGT   0.822745275109967	0.744162866759895 #11
+#16			ATCGA   0.811812039338427	0.713130865185136 #16
+#17			CGAAT   0.810244108724747	0.729560512894274 #13
+#18			CCGAT   0.806683868159494	0.675179865369885 #18
+#19			TCGAA   0.789184771054985	0.726436511010194 #14
+#20			AATCG   0.787173377488944	0.70467421301563  #17
+			CTCCG   					0.665565846584791 #19
+			CTGGG   					0.66020922614789  #20
+```
+
+But I find the enriched kmers iun this set to be so similar to the original set, and CGCCG still scores so much higher than other kmers.
 
