@@ -58,6 +58,9 @@ push @distance_metrics, qw(coordinate100_800 coordinate300_800 coordinate500_800
 
 # include offset for -q option to exclude introns very close to TSS
 push @distance_metrics, qw(coordinate50_400_400 coordinate75_400_400 coordinate125_400_400);
+push @distance_metrics, qw(coordinate150_400_400 coordinate175_400_400 coordinate200_400_400);
+
+
 push @distance_metrics, qw(coordinate125_300_300 coordinate125_500_500 coordinate125_600_600);
 push @distance_metrics, qw(coordinate125_700_700 coordinate125_500_700 coordinate125_400_900);
 
