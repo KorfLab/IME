@@ -63,6 +63,9 @@ push @distance_metrics, qw(coordinate150_400_400 coordinate175_400_400 coordinat
 
 push @distance_metrics, qw(coordinate125_300_300 coordinate125_500_500 coordinate125_600_600);
 push @distance_metrics, qw(coordinate125_700_700 coordinate125_500_700 coordinate125_400_900);
+push @distance_metrics, qw(coordinate125_300_900 coordinate125_300_1000 coordinate125_400_1000);
+push @distance_metrics, qw(coordinate125_500_1000 coordinate125_600_1200 coordinate125_750_1500);
+push @distance_metrics, qw(coordinate150_500_1000 coordinate150_1000_1500 coordinate150_1000_2000);
 
 push @distance_metrics, qw(coordinate100_400_400 coordinate200_400_400 coordinate300_400_400);
 push @distance_metrics, qw(coordinate100_500_500 coordinate200_500_500 coordinate300_500_500);
@@ -78,7 +81,7 @@ my %correlations;
 
 
 # vary size of k used for kmer counting
-for (my $k = 4; $k <= 6; $k++){
+for (my $k = 3; $k <= 7; $k++){
 
 	# just some examples of distance parameters that could be used. Substitute your own here
 	# if using coordinate system with 2 numbers, these will be used for values of -p and -d
