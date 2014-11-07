@@ -61,7 +61,9 @@ if (($opt_p or $opt_d) and ($opt_P or $opt_D)) {
 	die "-q option should only be used with -p option\n";
 } elsif ($opt_x and $opt_P){
 	die "-x option should only be used with -p/-q options\n";
-} else {warn "Options look good\n"}
+} else { 
+	# nothing to do here
+}
 
 
 # main loop

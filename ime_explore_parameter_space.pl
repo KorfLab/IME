@@ -20,22 +20,23 @@
 use strict;
 use warnings FATAL => 'all';
 use vars qw($opt_h);
+use List::Util qw(sum);
 use Getopt::Std;
-
+ 
 getopts('h');
 
 die "
-usage: $0 [params] <At intron file> <test intron file (with expression scores)> <output TSV filename>
+usage: $0 [params] <At intron file> <test intron file> <file of expression values>
 
-First file should be produced by ime_trainer.pl 
+First file should be parameter file produced by ime_trainer.pl 
 Second file should be taken from dbIME
-Third argument is final name of output file to create
+Optional third argument should be a file containing expression values for each intron in second file
 
 params:
   -h       this help
-" if @ARGV != 3 or $opt_h;
+" if (@ARGV < 2 or @ARGV > 3 or $opt_h);
 
-my ($intron_file, $test_seq_file, $table_filename)  = @ARGV;
+my ($intron_file, $test_seq_file, $expression_file)  = @ARGV;
 
 my $script1 = "ime_trainer.pl";
 my $script2 = "imeter.pl";
@@ -46,7 +47,8 @@ print "\n\n";
 my @distance_metrics;
 
 # integer positions for introns
-push @distance_metrics, qw(position12 position13 position14 position15 position16 position17);
+push @distance_metrics, qw(position12 position13 position14 position15 position16 position17 position18);
+push @distance_metrics, qw(position23 position34 position45);
 
 # absolute distances for -p and -d parameters
 push @distance_metrics, qw(coordinate100_400 coordinate200_400 coordinate300_400 coordinate400_400);
@@ -61,6 +63,11 @@ push @distance_metrics, qw(coordinate100_700_700 coordinate200_700_700 coordinat
 
 
 my $parameter_set = 0;
+
+# will store all correlation results in a hash
+my %correlations;
+
+
 
 # vary size of k used for kmer counting
 for (my $k = 4; $k <= 7; $k++){
@@ -159,6 +166,14 @@ for (my $k = 4; $k <= 7; $k++){
 
 					}
 
+					# can now calculate correlation for this parameter set
+					# but only if we have expression data
+					if ($expression_file){
+					
+						my $correlation = correlation($out_file_2);
+						print "Correlation (r) = $correlation\n";
+						
+					}
 					print "\n\n";
 				}
 			}
@@ -166,8 +181,83 @@ for (my $k = 4; $k <= 7; $k++){
 	}
 }
 
+
+# if we have been tracking expression scores we can print out all of the results
+# sorted by correlation
+exit(0) unless ($expression_file);
+
+foreach my $correlation (sort {$correlations{$a} <=> $correlations{$b}} keys %correlations){
+	print "$correlation\t$correlations{$correlation}\n";
+}
+
+
+
+####################################
+#
+# SUBROUTINES
+#
+####################################
+
+
+sub correlation{
+
+	my ($imeter_score_file) = @_;
+	my $prefix = $imeter_score_file;
+	$prefix =~ s/\.scores//;
+	my @expression_values = read_expression_data($expression_file);
+	my @v2_scores;
+
+	
+	open(my $in, "<", $imeter_score_file) or die "Can't open $imeter_score_file\n";
+	while(my $line = <$in>){
+		chomp($line);
+		my ($id, $v1, $v2) = split(/\s+/, $line);
+		push(@v2_scores, $v2);
+	}
+	
+	close($in);
+
+	# now calculate pearson correlation coefficient from IMEter v2 scores
+	my $n = @expression_values;
+	my $mean1 = sum(@expression_values) / $n;
+	my $mean2 = sum(@v2_scores) / $n;
+	
+	my $covariance = 0;
+	my $variance1 = 0;
+	my $variance2 = 0;
+	
+	for (my $i = 0; $i < @expression_values; $i++){
+		$covariance += (($expression_values[$i] - $mean1) * ($v2_scores[$i] - $mean2));
+		$variance1  += (($expression_values[$i] - $mean1)**2);
+		$variance2  += (($v2_scores[$i] - $mean2)**2);	
+	}
+	
+	my $r = $covariance / (sqrt($variance1) * sqrt($variance2));
+
+	# store correlation in hash and return formatted correlation
+	$correlations{$prefix} = $r;
+	return(sprintf("%.3f",$r));		
+	
+}
+
+sub read_expression_data{
+	my ($file) = @_;
+	
+	my @values;
+	open(my $in, "<", $file) or die "Can't open $file\n";
+	while(my $line = <$in>){
+		chomp($line);
+		push(@values, $line);
+	}
+	
+	close($in);
+	return(@values);
+}
 # now we have all scores in separate files, we can combine them into one main table
 
+exit(0);
+
+__END__
 # how many introns were there in test file?
 my $intron_count = `grep -c \">\" $test_seq_file`; chomp $intron_count;
 
