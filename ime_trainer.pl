@@ -115,11 +115,11 @@ foreach my $file (@ARGV) {
 			$class = 'not_counted';
 		} elsif ($opt_p and $beg <= $opt_p) {
 			$class = 'proximal';
-		} elsif ($opt_P and $pos <= $opt_P) {
+		} elsif ($opt_P and $pos == $opt_P) {
 			$class = 'proximal';
 		} elsif ($opt_d and $beg >= $opt_d) {
 			$class = 'distal';
-		} elsif ($opt_D and $pos >= $opt_D) {
+		} elsif ($opt_D and $pos == $opt_D) {
 			$class = 'distal'
 		} else {
 			$class = 'not_counted';
