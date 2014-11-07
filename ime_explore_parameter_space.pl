@@ -60,6 +60,8 @@ push @distance_metrics, qw(coordinate100_600_600 coordinate200_600_600 coordinat
 push @distance_metrics, qw(coordinate100_700_700 coordinate200_700_700 coordinate300_700_700);
 
 
+my $parameter_set = 0;
+
 # vary size of k used for kmer counting
 for (my $k = 4; $k <= 7; $k++){
 
@@ -78,8 +80,9 @@ for (my $k = 4; $k <= 7; $k++){
 				# finally want a way of using or not using -x option for clipping intron sequences
 				foreach my $x_option (qw(yes no)){
 				
+					$parameter_set++;
 					
-					print "Parameters: k=$k distance_method=$distance_metric ";
+					print "Parameter set $parameter_set: k=$k distance_method=$distance_metric ";
 					print "structure_requirement=$structure isoforms=$isoform x_option = $x_option\n";
 					print "----------------------------------------------------------------------------------\n";
 				
