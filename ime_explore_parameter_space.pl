@@ -56,6 +56,7 @@ push @distance_metrics, qw(coordinate100_600 coordinate200_600 coordinate300_600
 push @distance_metrics, qw(coordinate100_800 coordinate300_800 coordinate500_800 coordinate700_800);
 
 # include offset for -q option to exclude introns very close to TSS
+push @distance_metrics, qw(coordinate50_400_400 coordinate75_400_400 coordinate125_400_400);
 push @distance_metrics, qw(coordinate100_400_400 coordinate200_400_400 coordinate300_400_400);
 push @distance_metrics, qw(coordinate100_500_500 coordinate200_500_500 coordinate300_500_500);
 push @distance_metrics, qw(coordinate100_600_600 coordinate200_600_600 coordinate300_600_600);
@@ -170,8 +171,11 @@ for (my $k = 4; $k <= 7; $k++){
 					# but only if we have expression data
 					if ($expression_file){
 					
-						my $correlation = correlation($out_file_2);
-						print "Correlation (r) = $correlation\n";
+						# make correlations for IMEter v1 and v2
+						my $correlation1 = correlation($out_file_2, 'v1');
+						my $correlation2 = correlation($out_file_2, 'v2');
+
+						print "Correlation (r): v1 = $correlation1, v2 = $correlation2\n";
 						
 					}
 					print "\n\n";
@@ -186,9 +190,12 @@ for (my $k = 4; $k <= 7; $k++){
 # sorted by correlation
 exit(0) unless ($expression_file);
 
+my $outfile = "IME_correlations.tsv";
+open(my $out, ">", $outfile) or die "Can't write to $outfile\n";
 foreach my $correlation (sort {$correlations{$a} <=> $correlations{$b}} keys %correlations){
-	print "$correlation\t$correlations{$correlation}\n";
+	print $out "$correlation\t$correlations{$correlation}\n";
 }
+clolse($out);
 
 
 
@@ -201,18 +208,20 @@ foreach my $correlation (sort {$correlations{$a} <=> $correlations{$b}} keys %co
 
 sub correlation{
 
-	my ($imeter_score_file) = @_;
+	my ($imeter_score_file, $version) = @_;
 	my $prefix = $imeter_score_file;
 	$prefix =~ s/\.scores//;
 	my @expression_values = read_expression_data($expression_file);
-	my @v2_scores;
+
+	my @scores;
 
 	
 	open(my $in, "<", $imeter_score_file) or die "Can't open $imeter_score_file\n";
 	while(my $line = <$in>){
 		chomp($line);
 		my ($id, $v1, $v2) = split(/\s+/, $line);
-		push(@v2_scores, $v2);
+		push(@scores, $v1) if ($version eq 'v1'); 
+		push(@scores, $v2) if ($version eq 'v2'); 
 	}
 	
 	close($in);
@@ -220,16 +229,16 @@ sub correlation{
 	# now calculate pearson correlation coefficient from IMEter v2 scores
 	my $n = @expression_values;
 	my $mean1 = sum(@expression_values) / $n;
-	my $mean2 = sum(@v2_scores) / $n;
+	my $mean2 = sum(@scores) / $n;
 	
 	my $covariance = 0;
 	my $variance1 = 0;
 	my $variance2 = 0;
 	
 	for (my $i = 0; $i < @expression_values; $i++){
-		$covariance += (($expression_values[$i] - $mean1) * ($v2_scores[$i] - $mean2));
+		$covariance += (($expression_values[$i] - $mean1) * ($scores[$i] - $mean2));
 		$variance1  += (($expression_values[$i] - $mean1)**2);
-		$variance2  += (($v2_scores[$i] - $mean2)**2);	
+		$variance2  += (($scores[$i] - $mean2)**2);	
 	}
 	
 	if($variance1 == 0 or $variance2 == 0){
@@ -239,7 +248,8 @@ sub correlation{
 	my $r = $covariance / (sqrt($variance1) * sqrt($variance2));
 
 	# store correlation in hash and return formatted correlation
-	$correlations{$prefix} = $r;
+	my $index = $prefix . "_" . $version;
+	$correlations{$index} = $r;
 	return(sprintf("%.3f",$r));		
 	
 }
