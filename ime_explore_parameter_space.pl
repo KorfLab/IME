@@ -232,6 +232,10 @@ sub correlation{
 		$variance2  += (($v2_scores[$i] - $mean2)**2);	
 	}
 	
+	if($variance1 == 0 or $variance2 == 0){
+		$correlations{$prefix} = 0.000;
+		return(sprintf("%.3f",0));		
+	}
 	my $r = $covariance / (sqrt($variance1) * sqrt($variance2));
 
 	# store correlation in hash and return formatted correlation
