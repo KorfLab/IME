@@ -49,10 +49,15 @@ my @distance_metrics;
 push @distance_metrics, qw(position12 position13 position14 position15 position16 position17);
 
 # absolute distances for -p and -d parameters
-push @distance_metrics, qw(coordinate200_400 coordinate300_300 coordinate400_400);
+push @distance_metrics, qw(coordinate100_400 coordinate200_400 coordinate300_400 coordinate400_400);
+push @distance_metrics, qw(coordinate100_600 coordinate200_600 coordinate300_600 coordinate400_600 coordinate500_600 coordinate600_600);
+push @distance_metrics, qw(coordinate100_800 coordinate300_800 coordinate500_800 coordinate700_800);
 
 # include offset for -q option to exclude introns very close to TSS
-push @distance_metrics, qw(coordinate100_200_400 coordinate150_300_300 coordinate100_400_400);
+push @distance_metrics, qw(coordinate100_400_400 coordinate200_400_400 coordinate300_400_400);
+push @distance_metrics, qw(coordinate100_500_500 coordinate200_500_500 coordinate300_500_500);
+push @distance_metrics, qw(coordinate100_600_600 coordinate200_600_600 coordinate300_600_600);
+push @distance_metrics, qw(coordinate100_700_700 coordinate200_700_700 coordinate300_700_700);
 
 
 # vary size of k used for kmer counting
