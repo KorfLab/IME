@@ -28,8 +28,8 @@ getopts('h');
 die "
 usage: $0 [params] <At intron file> <test intron file> <file of expression values>
 
-First file should be parameter file produced by ime_trainer.pl 
-Second file should be taken from dbIME
+First file should be intron sequence of all introns to be used to generate parameter file from
+Second file should be taken from dbIME and each intron should have a known expression increase
 Optional third argument should be a file containing expression values for each intron in second file
 
 params:
