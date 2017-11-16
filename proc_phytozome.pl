@@ -36,7 +36,6 @@ my $STUB;
 
 die "
 usage: proc_phytozome.pl [options] <parent Phytozome directory>
-
 gene-level errors (these will be omitted from output files)
   -m <int> minimum intron size [$MIN_INTRON]
   -M <int> maximum intron size [$MAX_INTRON]
@@ -48,7 +47,6 @@ gene-level errors (these will be omitted from output files)
   -1 Specify a species-specific directory (default is to work through all species)
   -v verbose mode. Shows progress through each stage.
   -i ignore species that match pattern \"x\" (separate multiple species by spaces)
-
 Minimum usage example: proc_phytozome /path/to/Phytozome/v9.0/
   
 " if @ARGV != 1 or $opt_h;
@@ -78,13 +76,18 @@ if($opt_1){
 	@species_directories = "$DIR";
 	$species_directories[0] =~ s/\/$//;
 } else{
-	@species_directories = glob("$DIR*");
+	@species_directories = `ls $DIR`; # glob("$DIR*");
+	chomp @species_directories;
+	foreach my $spec (@species_directories){
+	$spec = $DIR . $spec;
+	}
 }
+
 
 SPECIES: foreach my $species_dir (@species_directories){
 
 	my ($species, $directory) = fileparse($species_dir);
-
+    print "Species = $species\nDirectory=$directory\n";
 	# skip early release data
 	next if $species eq "early_release";
 	
@@ -116,10 +119,13 @@ SPECIES: foreach my $species_dir (@species_directories){
 	# 2) gene_exons GFF3 file with coordinates of mRNAs, exons, and UTRs
 	# 3) Phytozome's annotation file which has transcript names and A. thaliana ortholog assignments
 
-	my $FASTA      = `ls $directory/$species/assembly/*fa.gz`;                    chomp $FASTA;
-	my $GFF        = `ls $directory/$species/annotation/*gene_exons.gff3.gz`;     chomp $GFF;
-	my $ANNOTATION = `ls $directory/$species/annotation/*annotation_info.txt.gz`; chomp $ANNOTATION;
+	my $FASTA      = `ls $directory$species/assembly/*fa.gz`;                    chomp $FASTA;
+	my $GFF        = `ls $directory$species/annotation/*gene_exons.gff3.gz`;     chomp $GFF;
+	my $ANNOTATION = `ls $directory$species/annotation/*annotation_info.txt`;    chomp $ANNOTATION;
 
+    if ($FASTA =~ /\n/) {
+        warn "\tUsing softmasked file...\n";
+        $FASTA      = `ls $directory$species/assembly/*softmasked.fa.gz`;      chomp $FASTA;} 
 	die "can't find FASTA"       unless -e $FASTA;
 	die "can't find GFF"         unless -e $GFF;
 	die "can't find ANNOTATION"  unless -e $ANNOTATION;
@@ -154,7 +160,7 @@ sub process_species{
 	while (<$gfh>) {
 		next if /^#/;
 		my ($seq, $so, $fea, $beg, $end, $sco, $str, $frm, $group) = split;
-		my ($id) = $group =~ /ID=PAC:(\d+)/;
+		my ($id) = $group =~ /pacid=(\d+)/;#ID=PAC:
 		if ($fea eq 'mRNA') {
 			my ($name) = $group =~ /Name=(\S+?);/;
 			$transcripts{$id}{name} = $name;
@@ -278,6 +284,35 @@ sub process_species{
 			# translate
 			$transcripts{$id}{protein} = IK::translate($cds_seq);		
 		}
+		
+		# loop over all selected IDs for this chromosome -JD
+		foreach my $id (@{$selected_id{$chrom}}) {
+			my $processing_seq;
+			#print "pacid: $id\n";
+			
+			if ($transcripts{$id}{strand} eq '+') {	
+				#print "+ strand\n";
+				foreach my $cds (sort {$a->{beg} <=> $b->{beg}} @{$transcripts{$id}{CDS}}) {
+					my $seq .= substr($entry->{SEQ}, $cds->{beg}-1,
+						$cds->{end} - $cds->{beg} + 1);		
+					(my $add, $processing_seq) = blast_fasta($processing_seq, $seq);
+					$transcripts{$id}{blast} .= $add;
+				}
+			} elsif ($transcripts{$id}{strand} eq '-') {
+				#print "- strand\n";
+				foreach my $cds (sort {$b->{beg} <=> $a->{beg}} @{$transcripts{$id}{CDS}}) {
+					my $seq .= substr($entry->{SEQ}, $cds->{beg}-1,
+						$cds->{end} - $cds->{beg} + 1);		
+					$seq =~ tr[ACGTRYMKWSBDHV]
+						  	  [TGCAYRKMWSVHDB];
+					$seq = reverse $seq;
+					(my $add, $processing_seq) = blast_fasta($processing_seq, $seq);
+					$transcripts{$id}{blast} .= $add;
+				}
+			}							
+		#print "final: $transcripts{$id}{blast}\n"; 
+		#die;
+		}			
 	}
 	close $ffh;
 
@@ -348,7 +383,7 @@ sub process_species{
 	# Step 5: extract relevant info from annotation file
 	warn "\tStep 6: extracting extra information from Phytozome annotation file\n" if $VERBOSE;
 
-	open(my $afh, "gunzip -c $ANNOTATION |") or die;
+	open(my $afh, "$ANNOTATION") or die;
 	while (<$afh>) {
 		next if /^#/;
 	
@@ -417,6 +452,8 @@ sub process_species{
 				my $structure;
 				my $n5 = @{$transcripts{$id}{five_prime_UTR}};
 				my $n3 = @{$transcripts{$id}{three_prime_UTR}};
+				if ($n5  > 1) {print $species .": $id has $n5 5' UTR\n";}
+				if ($n3  > 1) {print $species .": $id has $n3 3' UTR\n";}
 
 				if ($n5 and $n3){
 					$structure = "5-3";								
@@ -529,6 +566,29 @@ TRANSCRIPTS_WITH_BOTH_UTRS: $complete
 
 }
 
+sub blast_fasta {
+	my ($processing_seq, $seq) = @_;
+	$processing_seq = $processing_seq.$seq;	
+	#print "1. $processing_seq\n";
+				
+	my $to_translate;
+	my $l = length($processing_seq) % 3;
+	
+	if ($l == 0) {
+		$to_translate = $processing_seq;
+		$processing_seq = "";
+	} else {
+		$to_translate = substr($processing_seq, 0, -$l);
+		$processing_seq = substr($processing_seq, -$l);	
+	}	
+	#print "2. $to_translate\n";			
+	my $output .= IK::translate($to_translate);
+	$output .= '*';				
+	#print "3. $output\n";
+	
+	return ($output, $processing_seq); 
+}
+
 sub extract_seq {
 	my ($feature, $strand, $entry) = @_;
 	
@@ -574,11 +634,3 @@ sub tidy_seq{
 
 
 __END__
-
-
-
-
-
-
-
-
